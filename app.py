@@ -40,6 +40,15 @@ def init_db():
             admin_note TEXT DEFAULT '', admin_price TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now','localtime'))
         );
+        CREATE TABLE IF NOT EXISTS availability (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            available INTEGER DEFAULT 0,
+            note TEXT DEFAULT '',
+            updated_at TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(date, time)
+        );
         CREATE TABLE IF NOT EXISTS chat_sessions (
             id TEXT PRIMARY KEY, customer_name TEXT NOT NULL,
             phone TEXT DEFAULT '', last_message TEXT DEFAULT '',
@@ -107,12 +116,68 @@ def customer_home():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+def get_availability(date=None):
+    conn = get_db()
+    if date:
+        rows = conn.execute('SELECT * FROM availability WHERE date=? ORDER BY time', (date,)).fetchall()
+    else:
+        rows = conn.execute('SELECT * FROM availability ORDER BY date,time').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.route('/api/availability')
+def api_availability():
+    start = request.args.get('start')
+    end = request.args.get('end')
+    conn = get_db()
+    if start and end:
+        rows = conn.execute('SELECT * FROM availability WHERE date BETWEEN ? AND ? ORDER BY date,time', (start, end)).fetchall()
+    else:
+        rows = conn.execute('SELECT * FROM availability ORDER BY date,time').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/availability')
+def admin_availability():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    return jsonify(get_availability())
+
+@app.route('/api/admin/availability', methods=['POST'])
+def save_availability():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    if not all(d.get(k) for k in ['date','time']):
+        return jsonify({'success':False,'error':'Date and time are required.'}), 400
+    available = 1 if d.get('available') else 0
+    conn = get_db()
+    conn.execute('INSERT INTO availability (date,time,available,note,updated_at) VALUES (?,?,?,?,datetime(\'now\',\'localtime\'))'
+                 'ON CONFLICT(date,time) DO UPDATE SET available=excluded.available,note=excluded.note,updated_at=excluded.updated_at',
+                 (d['date'],d['time'],available,d.get('note','')))
+    conn.commit(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/availability/<int:aid>', methods=['DELETE'])
+def delete_availability(aid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db()
+    conn.execute('DELETE FROM availability WHERE id=?',(aid,))
+    conn.commit(); conn.close()
+    return jsonify({'success':True})
+
 @app.route('/api/book', methods=['POST'])
 def book_appointment():
     d = request.json or {}
     if not all(d.get(f) for f in ['name','phone','service','date','time']):
         return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
     conn = get_db()
+    slot = conn.execute('SELECT available FROM availability WHERE date=? AND time=?', (d['date'], d['time'])).fetchone()
+    if not slot or slot['available'] != 1:
+        conn.close()
+        return jsonify({'success':False,'error':'Selected slot is not available. Please choose another date/time.'}), 400
+    exists = conn.execute('SELECT COUNT(1) AS cnt FROM appointments WHERE date=? AND time=? AND status != ?', (d['date'], d['time'], 'cancelled')).fetchone()
+    if exists['cnt'] > 0:
+        conn.close()
+        return jsonify({'success':False,'error':'That slot is already booked. Please choose another date/time.'}), 400
     conn.execute('INSERT INTO appointments (name,phone,service,date,time,notes) VALUES (?,?,?,?,?,?)',
         (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes','')))
     conn.commit(); conn.close()
@@ -242,6 +307,12 @@ def on_message(data):
 @socketio.on('admin_join_session')
 def admin_join_session(data):
     join_room(data.get('session_id'))
+
+@socketio.on('join_design_notify')
+def join_design_notify(data):
+    phone = data.get('phone', '')
+    if phone:
+        join_room('design_notify_' + phone)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT',5000))

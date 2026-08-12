@@ -56,6 +56,14 @@ textarea { resize:vertical; min-height:80px; }
 .spinner { display:none; text-align:center; padding:20px; }
 .spinner-ring { width:36px; height:36px; border:3px solid var(--border); border-top-color:var(--rose); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 10px; }
 @keyframes spin { to { transform:rotate(360deg); } }
+.price-notify {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+  background:var(--dark); color:#fff; border-radius:12px; padding:16px 22px;
+  font-size:13px; box-shadow:0 4px 20px rgba(0,0,0,.25); z-index:999;
+  display:none; max-width:320px; width:90%; text-align:center;
+}
+.price-notify strong { color:var(--rose); font-family:Georgia,serif; font-size:16px; display:block; margin:6px 0; }
+.price-notify-close { margin-top:10px; padding:6px 16px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:12px; }
 .chat-start { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
 .chat-window { background:var(--white); border:1px solid var(--border); border-radius:12px; display:none; flex-direction:column; height:460px; }
 .chat-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
@@ -78,6 +86,7 @@ textarea { resize:vertical; min-height:80px; }
     <div class="nav-brand">LUNÉA</div>
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="showSection('book')">预约</button>
+      <button class="nav-tab" onclick="showSection('availability')">可预约时间</button>
       <button class="nav-tab" onclick="showSection('design')">设计报价</button>
       <button class="nav-tab" onclick="showSection('chat')">Chat <span class="chat-badge" id="chatBadge">1</span></button>
     </div>
@@ -113,20 +122,24 @@ textarea { resize:vertical; min-height:80px; }
     <div class="form-group"><label>DATE 日期 *</label><input type="date" id="bookDate"></div>
     <div class="form-group">
       <label>TIME 时间 *</label>
-      <select id="bookTime">
-        <option value="">-- Select --</option>
-        <option>10:00 AM</option><option>10:30 AM</option><option>11:00 AM</option><option>11:30 AM</option>
-        <option>12:00 PM</option><option>12:30 PM</option><option>1:00 PM</option><option>1:30 PM</option>
-        <option>2:00 PM</option><option>2:30 PM</option><option>3:00 PM</option><option>3:30 PM</option>
-        <option>4:00 PM</option><option>4:30 PM</option><option>5:00 PM</option><option>5:30 PM</option>
-        <option>6:00 PM</option>
-      </select>
+      <select id="bookTime"><option value="">-- Select date first --</option></select>
     </div>
   </div>
+  <div class="form-group" id="bookAvailabilityNotice" style="display:none;"><label>Available slots</label><div id="bookAvailabilityText" style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;color:var(--mid);"></div></div>
   <div class="form-group"><label>NOTES 备注</label><textarea id="bookNotes" placeholder="Any special requests..."></textarea></div>
   <button class="btn btn-primary" onclick="submitBooking()">CONFIRM APPOINTMENT 确认预约</button>
   <div class="alert success" id="bookSuccess">✓ Appointment request sent! We'll confirm via WhatsApp soon.</div>
   <div class="alert error" id="bookError"></div>
+</div>
+<div class="section" id="section-availability">
+  <div class="page-header"><h1>LUNÉA</h1><p>AVAILABLE SLOTS · 可预约时段</p></div>
+  <div class="divider"><div class="divider-line"></div><div class="divider-text">Browse available reservation slots for the next two weeks</div><div class="divider-line"></div></div>
+  <div id="availabilitySummary" class="result-card" style="display:block;padding:20px;">
+    <div style="font-size:14px;font-weight:600;color:var(--dark);margin-bottom:8px;">Upcoming availability</div>
+    <div id="availabilityInfo" style="font-size:13px;color:var(--mid);line-height:1.6;">Loading available dates...</div>
+  </div>
+  <div id="availabilityList" class="design-grid" style="margin-top:16px;"></div>
+  <div class="alert error" id="availabilityError"></div>
 </div>
 <div class="section" id="section-design">
   <div class="page-header"><h1>LUNÉA</h1><p>DESIGN PRICE ESTIMATE · 设计估价</p></div>
@@ -172,16 +185,73 @@ textarea { resize:vertical; min-height:80px; }
     </div>
   </div>
 </div>
+<div class="price-notify" id="priceNotify">
+  ✦ LUNÉA has reviewed your design!
+  <strong id="notifyPrice"></strong>
+  <div id="notifyNote" style="font-size:12px;color:#ddd;margin-bottom:4px;"></div>
+  <button class="price-notify-close" onclick="document.getElementById('priceNotify').style.display='none'">OK, Got it!</button>
+</div>
 <script>
 function showSection(name) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('section-'+name).classList.add('active');
-  const idx={book:0,design:1,chat:2}[name];
+  const idx={book:0,availability:1,design:2,chat:3}[name];
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
   if(name==='chat'){document.getElementById('chatBadge').classList.remove('show');}
 }
-document.getElementById('bookDate').min=new Date().toISOString().split('T')[0];
+const availabilityCache = {};
+
+function formatDateLabel(date){
+  return new Date(date).toLocaleDateString('zh-Hans', { month:'short', day:'numeric', weekday:'short' });
+}
+
+async function loadAvailability(startDate, endDate){
+  const url = `/api/availability?start=${startDate}&end=${endDate}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  const grouped = {};
+  data.forEach(slot => {
+    if (!grouped[slot.date]) grouped[slot.date] = [];
+    if (slot.available === 1) grouped[slot.date].push(slot.time);
+  });
+  return grouped;
+}
+
+document.getElementById('bookDate').min = new Date().toISOString().split('T')[0];
+document.getElementById('bookDate').addEventListener('change', () => loadTimesForDate(document.getElementById('bookDate').value));
+
+async function loadTimesForDate(date){
+  if (!date) return;
+  const times = availabilityCache[date] || [];
+  const timeSelect = document.getElementById('bookTime');
+  timeSelect.innerHTML = '<option value="">-- Select --</option>';
+  if (times.length === 0) {
+    timeSelect.innerHTML = '<option value="">No times available</option>';
+    document.getElementById('bookAvailabilityNotice').style.display = 'block';
+    document.getElementById('bookAvailabilityText').textContent = '该日期暂无可预约时段，请选择其他日期。';
+    return;
+  }
+  times.forEach(t => timeSelect.insertAdjacentHTML('beforeend', `<option>${t}</option>`));
+  document.getElementById('bookAvailabilityNotice').style.display = 'block';
+  document.getElementById('bookAvailabilityText').textContent = `可选时段：${times.join('，')}`;
+}
+
+async function refreshAvailabilityPanel(){
+  const today = new Date().toISOString().split('T')[0];
+  const end = new Date(new Date().setDate(new Date().getDate() + 14)).toISOString().split('T')[0];
+  const grouped = await loadAvailability(today, end);
+  Object.assign(availabilityCache, grouped);
+  const days = Object.keys(grouped).sort();
+  const summary = days.length ? `${days.length} 个可预约日期，从 ${formatDateLabel(days[0])} 到 ${formatDateLabel(days[days.length-1])}` : '当前没有可预约日期。请稍后再试。';
+  document.getElementById('availabilityInfo').textContent = summary;
+  const list = document.getElementById('availabilityList');
+  list.innerHTML = days.slice(0, 8).map(date => {
+    const times = grouped[date].length;
+    return `<div class="design-card"><div class="design-card-body"><div class="design-card-name">${formatDateLabel(date)}</div><div style="font-size:12px;color:var(--mid);">${times} 可预约时段</div><div style="margin-top:10px;font-size:12px;color:var(--mid);">${grouped[date].slice(0,3).join('，')}${grouped[date].length>3?' ...':''}</div></div></div>`;
+  }).join('') || '<p style="color:var(--mid);font-size:13px;">No available reservation dates were found.</p>';
+}
+
 async function submitBooking(){
   const btn=document.querySelector('#section-book .btn-primary');
   const data={name:document.getElementById('bookName').value.trim(),phone:document.getElementById('bookPhone').value.trim(),service:document.getElementById('bookService').value,date:document.getElementById('bookDate').value,time:document.getElementById('bookTime').value,notes:document.getElementById('bookNotes').value.trim()};
@@ -242,7 +312,7 @@ function sendMsg(){
   if(!msg||!socket||!sessionId)return;
   socket.emit('send_message',{session_id:sessionId,sender:'customer',message:msg});input.value='';
 }
-window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}});
+window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}refreshAvailabilityPanel();});
 </script>
 </body>
 </html>

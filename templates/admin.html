@@ -101,6 +101,7 @@ async function login(){
   <div class="sidebar">
     <div class="sidebar-brand">LUNÉA<small>ADMIN</small></div>
     <div class="nav-item active" onclick="showTab('appointments')">📅 Reservations <span class="notif-dot" id="apptDot"></span></div>
+    <div class="nav-item" onclick="showTab('availability')">🗓️ Availability <span class="notif-dot" id="availDot"></span></div>
     <div class="nav-item" onclick="showTab('designs')">🖼️ Design Uploads <span class="notif-dot" id="designDot"></span></div>
     <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
@@ -120,6 +121,33 @@ async function login(){
         <table><thead><tr><th>DATE &amp; TIME</th><th>NAME</th><th>PHONE</th><th>SERVICE</th><th>NOTES</th><th>STATUS</th></tr></thead>
         <tbody id="apptBody"></tbody></table>
       </div>
+      <div id="tab-availability" style="display:none">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-num" id="availCount">0</div><div class="stat-label">TOTAL SLOTS</div></div>
+          <div class="stat-card"><div class="stat-num" id="availOpen">0</div><div class="stat-label">OPEN</div></div>
+          <div class="stat-card"><div class="stat-num" id="availClosed">0</div><div class="stat-label">CLOSED</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+          <div class="design-card" style="padding:20px;">
+            <div class="design-card-name">Add / update slot</div>
+            <div class="admin-review" style="margin-top:12px;">
+              <input type="date" id="availDate" placeholder="YYYY-MM-DD">
+              <input type="text" id="availTime" placeholder="Time e.g. 10:00 AM">
+              <label style="font-size:12px;color:var(--mid);margin:8px 0 4px;display:block;"><input type="checkbox" id="availOpenCheck"> Mark as available</label>
+              <input type="text" id="availNote" placeholder="Admin note (optional)">
+              <button onclick="saveAvailability()">Save slot</button>
+            </div>
+          </div>
+          <div class="design-card" style="padding:20px;">
+            <div class="design-card-name">How to use</div>
+            <div style="font-size:12px;color:var(--mid);line-height:1.6;">
+              Add a reservation date and time, then mark it available. Customers will only see slots marked available. Remove slots when you want them hidden.
+            </div>
+          </div>
+        </div>
+        <table><thead><tr><th>DATE</th><th>TIME</th><th>AVAILABLE</th><th>NOTE</th><th>ACTION</th></tr></thead>
+        <tbody id="availBody"></tbody></table>
+      </div>
       <div id="tab-designs" style="display:none"><div class="design-grid" id="designGrid"></div></div>
       <div id="tab-chat" style="display:none">
         <div class="chat-layout">
@@ -134,12 +162,13 @@ async function login(){
 </div>
 <script>
 let socket,activeSession=null;
-const tabs={appointments:'Reservations · 预约管理',designs:'Design Uploads · 设计图评估',chat:'Live Chat · 在线聊天'};
+const tabs={appointments:'Reservations · 预约管理',availability:'Availability · 可预约管理',designs:'Design Uploads · 设计图评估',chat:'Live Chat · 在线聊天'};
 function showTab(name){
-  ['appointments','designs','chat'].forEach(t=>document.getElementById('tab-'+t).style.display=t===name?'block':'none');
+  ['appointments','availability','designs','chat'].forEach(t=>document.getElementById('tab-'+t).style.display=t===name?'block':'none');
   document.querySelectorAll('.nav-item').forEach((el,i)=>el.classList.toggle('active',i===Object.keys(tabs).indexOf(name)));
   document.getElementById('tabTitle').textContent=tabs[name];
   if(name==='appointments')loadAppointments();
+  if(name==='availability')loadAvailability();
   if(name==='designs')loadDesigns();
   if(name==='chat'){loadSessions();document.getElementById('chatDot').classList.remove('show');}
 }
@@ -163,6 +192,38 @@ async function loadAppointments(){
 async function updateStatus(id,status){
   await fetch('/api/admin/appointments/'+id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
   loadAppointments();
+}
+async function loadAvailability(){
+  const res=await fetch('/api/admin/availability');
+  const data=await res.json();
+  document.getElementById('availCount').textContent=data.length;
+  document.getElementById('availOpen').textContent=data.filter(d=>d.available===1).length;
+  document.getElementById('availClosed').textContent=data.filter(d=>d.available===0).length;
+  document.getElementById('availBody').innerHTML=data.map(slot=>`<tr>
+    <td>${slot.date}</td>
+    <td>${slot.time}</td>
+    <td>${slot.available===1?'Yes':'No'}</td>
+    <td>${slot.note||'–'}</td>
+    <td><button style="padding:6px 10px;background:#e24b4a;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="removeAvailability(${slot.id})">Delete</button></td>
+  </tr>`).join('') || '<tr><td colspan="5" style="color:var(--mid);font-size:13px;text-align:center;">No availability slots configured yet.</td></tr>';
+}
+async function saveAvailability(){
+  const date=document.getElementById('availDate').value;
+  const time=document.getElementById('availTime').value.trim();
+  const available=document.getElementById('availOpenCheck').checked;
+  const note=document.getElementById('availNote').value.trim();
+  if(!date||!time){alert('Please enter date and time for the slot.');return;}
+  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,available,note})});
+  document.getElementById('availDate').value='';
+  document.getElementById('availTime').value='';
+  document.getElementById('availOpenCheck').checked=false;
+  document.getElementById('availNote').value='';
+  loadAvailability();
+}
+async function removeAvailability(id){
+  if(!confirm('Remove this slot?')) return;
+  await fetch(`/api/admin/availability/${id}`,{method:'DELETE'});
+  loadAvailability();
 }
 async function loadDesigns(){
   const res=await fetch('/api/admin/designs');const data=await res.json();
