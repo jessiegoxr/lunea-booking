@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+lunea.db
+uploads/
+*.db
+.DS_Store
+venv/
+.venv/

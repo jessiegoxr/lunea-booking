@@ -1,0 +1,248 @@
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask_socketio import SocketIO, emit, join_room
+import sqlite3, os, uuid, base64
+from datetime import datetime
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'lunea-secret-change-me')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lunea2026')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def get_db():
+    conn = sqlite3.connect('lunea.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS appointments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL, phone TEXT NOT NULL, service TEXT NOT NULL,
+            date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS design_uploads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_name TEXT NOT NULL, phone TEXT NOT NULL,
+            filename TEXT NOT NULL, original_name TEXT NOT NULL,
+            ai_analysis TEXT DEFAULT '', price_estimate TEXT DEFAULT '',
+            admin_note TEXT DEFAULT '', admin_price TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY, customer_name TEXT NOT NULL,
+            phone TEXT DEFAULT '', last_message TEXT DEFAULT '',
+            last_time TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL, sender TEXT NOT NULL,
+            message TEXT NOT NULL,
+            timestamp TEXT DEFAULT (datetime('now','localtime'))
+        );
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def analyze_nail_design(image_path, original_filename):
+    if not ANTHROPIC_API_KEY:
+        return {'analysis': '⚠️ AI key not configured. Admin will review manually.', 'price_estimate': 'Pending review'}
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        with open(image_path, 'rb') as f:
+            image_data = base64.standard_b64encode(f.read()).decode('utf-8')
+        ext = original_filename.rsplit('.', 1)[1].lower()
+        mt = {'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}
+        media_type = mt.get(ext, 'image/jpeg')
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001', max_tokens=600,
+            messages=[{'role':'user','content':[
+                {'type':'image','source':{'type':'base64','media_type':media_type,'data':image_data}},
+                {'type':'text','text':'''You are a nail technician assistant for LUNÉA Nail Studio, Penang.
+Analyze this nail design and respond EXACTLY in this format:
+
+**款式复杂度 Complexity:** [Simple 简单 / Moderate 中等 / Complex 复杂]
+**技术 Techniques:** [list: gel, extension, cat eye, nail art, ombre, etc.]
+**估价 Estimated Price:** RM [amount or range]
+**说明 Notes:** [1-2 sentences describing the design in English & Chinese]
+
+Price reference:
+- Gel manicure single/ombre/cat eye: RM50
+- Gel manicure simple design: RM65
+- Gel manicure complex design: RM85
+- Nail extension single/ombre/cat eye: RM95
+- Nail extension simple design: RM115
+- Nail extension complex design: RM130
+- Accessories add-on: RM2-10'''}]}])
+        text = response.content[0].text
+        price_line = next((l for l in text.split('\n') if 'Estimated Price' in l or '估价' in l), '')
+        price = price_line.split(':',1)[-1].strip() if price_line else 'See analysis'
+        return {'analysis': text, 'price_estimate': price}
+    except Exception as e:
+        return {'analysis': f'Analysis error: {str(e)}', 'price_estimate': 'Contact us for quote'}
+
+@app.route('/')
+def customer_home():
+    return render_template('customer.html')
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/api/book', methods=['POST'])
+def book_appointment():
+    d = request.json or {}
+    if not all(d.get(f) for f in ['name','phone','service','date','time']):
+        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
+    conn = get_db()
+    conn.execute('INSERT INTO appointments (name,phone,service,date,time,notes) VALUES (?,?,?,?,?,?)',
+        (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes','')))
+    conn.commit(); conn.close()
+    socketio.emit('new_appointment',{'name':d['name'],'service':d['service'],'date':d['date']},room='admin')
+    return jsonify({'success':True})
+
+@app.route('/api/upload-design', methods=['POST'])
+def upload_design():
+    if 'file' not in request.files:
+        return jsonify({'success':False,'error':'No file uploaded.'}), 400
+    file = request.files['file']
+    name = request.form.get('name','Customer')
+    phone = request.form.get('phone','')
+    if not file or not allowed_file(file.filename):
+        return jsonify({'success':False,'error':'Please upload JPG/PNG/WEBP image.'}), 400
+    original_name = secure_filename(file.filename)
+    filename = f"{uuid.uuid4().hex}_{original_name}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    result = analyze_nail_design(filepath, original_name)
+    conn = get_db()
+    conn.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate) VALUES (?,?,?,?,?,?)',
+        (name,phone,filename,original_name,result['analysis'],result['price_estimate']))
+    conn.commit(); conn.close()
+    socketio.emit('new_design',{'name':name,'price':result['price_estimate']},room='admin')
+    return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/uploads/{filename}'})
+
+@app.route('/admin')
+def admin_page():
+    if not session.get('admin'):
+        return render_template('admin.html', logged_in=False)
+    return render_template('admin.html', logged_in=True)
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    if request.json.get('password') == ADMIN_PASSWORD:
+        session['admin'] = True
+        return jsonify({'success':True})
+    return jsonify({'success':False,'error':'Wrong password'}), 401
+
+@app.route('/api/admin/logout', methods=['POST'])
+def admin_logout():
+    session.pop('admin',None)
+    return jsonify({'success':True})
+
+@app.route('/api/admin/appointments')
+def get_appointments():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM appointments ORDER BY date,time').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/appointments/<int:aid>/status', methods=['POST'])
+def update_appt_status(aid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db()
+    conn.execute('UPDATE appointments SET status=? WHERE id=?',(request.json.get('status'),aid))
+    conn.commit(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/designs')
+def get_designs():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM design_uploads ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/designs/<int:did>/review', methods=['POST'])
+def review_design(did):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    conn = get_db()
+    conn.execute('UPDATE design_uploads SET admin_note=?,admin_price=? WHERE id=?',(d.get('note',''),d.get('price',''),did))
+    conn.commit(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/chat-sessions')
+def get_chat_sessions():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM chat_sessions ORDER BY last_time DESC,created_at DESC').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/chat/messages/<session_id>')
+def get_messages(session_id):
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM chat_messages WHERE session_id=? ORDER BY timestamp',(session_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@socketio.on('join')
+def on_join(data):
+    sid = data.get('session_id')
+    name = data.get('name','Customer')
+    phone = data.get('phone','')
+    is_admin = data.get('is_admin',False)
+    if is_admin:
+        join_room('admin')
+    else:
+        join_room(sid)
+        conn = get_db()
+        exists = conn.execute('SELECT id FROM chat_sessions WHERE id=?',(sid,)).fetchone()
+        if not exists:
+            conn.execute('INSERT INTO chat_sessions (id,customer_name,phone) VALUES (?,?,?)',(sid,name,phone))
+            conn.commit()
+        conn.close()
+        emit('new_session',{'session_id':sid,'name':name,'phone':phone},room='admin')
+
+@socketio.on('send_message')
+def on_message(data):
+    sid = data.get('session_id','')
+    msg = data.get('message','').strip()
+    sender = data.get('sender','customer')
+    if not msg or not sid: return
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db()
+    conn.execute('INSERT INTO chat_messages (session_id,sender,message,timestamp) VALUES (?,?,?,?)',(sid,sender,msg,now))
+    conn.execute('UPDATE chat_sessions SET last_message=?,last_time=? WHERE id=?',(msg[:60],now,sid))
+    conn.commit(); conn.close()
+    emit('receive_message',{'session_id':sid,'sender':sender,'message':msg,'timestamp':now},room=sid)
+    if sender == 'customer':
+        emit('customer_message',{'session_id':sid,'message':msg,'timestamp':now},room='admin')
+
+@socketio.on('admin_join_session')
+def admin_join_session(data):
+    join_room(data.get('session_id'))
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT',5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
