@@ -345,31 +345,6 @@ def get_availability():
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
-@app.route('/api/signup', methods=['POST'])
-def customer_signup():
-    d = request.json or {}
-    email = d.get('email','').strip().lower()
-    name = d.get('name','').strip()
-    phone = d.get('phone','').strip()
-    password = d.get('password','')
-    if not all([email, name, password]):
-        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
-    if len(password) < 6:
-        return jsonify({'success':False,'error':'Password must be at least 6 characters.'}), 400
-    conn = get_db(); cur = conn.cursor()
-    try:
-        cur.execute('INSERT INTO customers (email,name,phone,password_hash) VALUES (%s,%s,%s,%s)',
-            (email,name,phone,generate_password_hash(password)))
-        conn.commit(); cur.close(); conn.close()
-        session['customer_email'] = email
-        session['customer_name'] = name
-        return jsonify({'success':True})
-    except Exception as e:
-        conn.rollback(); cur.close(); conn.close()
-        if 'unique' in str(e).lower():
-            return jsonify({'success':False,'error':'Email already registered. Please login instead.'}), 400
-        return jsonify({'success':False,'error':'Signup failed. Please try again.'}), 500
-
 @app.route('/api/customer/login', methods=['POST'])
 def customer_login():
     d = request.json or {}
