@@ -6,82 +6,112 @@
 <title>LUNÉA Admin</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <style>
-:root { --cream:#faf6f1; --rose:#c4a898; --dark:#2c2320; --mid:#8a6f65; --light:#f3ece6; --border:#ddd0c8; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',sans-serif; background:#f0ebe4; color:var(--dark); }
-.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; }
-.login-card { background:#fff; border:1px solid var(--border); border-radius:16px; padding:40px; width:340px; text-align:center; }
-.login-card h1 { font-family:Georgia,serif; font-size:28px; letter-spacing:8px; color:var(--dark); margin-bottom:4px; }
-.login-card p { font-size:11px; letter-spacing:3px; color:var(--rose); margin-bottom:28px; }
-.login-card input { width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:8px; font-size:14px; margin-bottom:12px; outline:none; }
-.login-card input:focus { border-color:var(--rose); }
-.login-card button { width:100%; padding:12px; background:var(--rose); color:#fff; border:none; border-radius:8px; font-size:13px; letter-spacing:2px; cursor:pointer; }
-.login-err { color:#a32d2d; font-size:12px; margin-top:8px; display:none; }
-.admin-layout { display:flex; height:100vh; }
-.sidebar { width:200px; background:var(--dark); display:flex; flex-direction:column; padding:24px 0; flex-shrink:0; }
-.sidebar-brand { font-family:Georgia,serif; font-size:18px; letter-spacing:6px; color:#fff; text-align:center; padding:0 16px 24px; border-bottom:1px solid #3a2e2b; margin-bottom:16px; }
-.sidebar-brand small { display:block; font-family:'Segoe UI',sans-serif; font-size:9px; letter-spacing:3px; color:var(--rose); margin-top:2px; }
-.nav-item { padding:12px 20px; color:#c4a898; font-size:13px; cursor:pointer; border-left:3px solid transparent; transition:.2s; display:flex; align-items:center; gap:8px; }
-.nav-item:hover { background:rgba(255,255,255,.05); }
-.nav-item.active { color:#fff; border-left-color:var(--rose); background:rgba(196,168,152,.1); }
-.notif-dot { width:8px; height:8px; border-radius:50%; background:#e24b4a; margin-left:auto; display:none; }
-.notif-dot.show { display:block; }
-.sidebar-logout { margin-top:auto; padding:12px 20px; color:#8a6f65; font-size:12px; cursor:pointer; }
-.sidebar-logout:hover { color:#fff; }
-.main { flex:1; overflow:hidden; display:flex; flex-direction:column; }
-.topbar { background:#fff; border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; }
-.topbar h2 { font-size:16px; font-weight:500; }
-.content { flex:1; overflow-y:auto; padding:24px; }
-.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
-.stat-card { background:#fff; border:1px solid var(--border); border-radius:12px; padding:18px; text-align:center; }
-.stat-num { font-size:32px; font-family:Georgia,serif; color:var(--rose); }
-.stat-label { font-size:11px; letter-spacing:2px; color:var(--mid); margin-top:4px; }
-table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; }
-th { background:var(--light); padding:12px 16px; font-size:11px; letter-spacing:2px; color:var(--mid); text-align:left; }
-td { padding:12px 16px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
-tr:last-child td { border-bottom:none; }
-select.status-sel { padding:4px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:#fff; cursor:pointer; }
-.design-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
-.design-card { background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-.design-card img { width:100%; height:180px; object-fit:cover; }
-.design-card-body { padding:14px; }
-.design-card-name { font-size:13px; font-weight:600; margin-bottom:2px; }
-.design-card-phone { font-size:11px; color:var(--mid); margin-bottom:8px; }
-.ai-box { background:var(--light); border-radius:8px; padding:10px; font-size:11.5px; color:var(--mid); line-height:1.6; white-space:pre-wrap; max-height:120px; overflow-y:auto; margin-bottom:10px; }
-.admin-review input { width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:12px; margin-bottom:6px; }
-.admin-review button { width:100%; padding:7px; background:var(--rose); color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer; }
-.admin-note-display { background:#eaf3de; color:#3b6d11; border-radius:6px; padding:8px 10px; font-size:12px; margin-top:6px; }
-.chat-layout { display:flex; height:calc(100vh - 130px); }
-.session-list { width:260px; background:#fff; border:1px solid var(--border); border-radius:12px 0 0 12px; overflow-y:auto; flex-shrink:0; }
-.session-item { padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:.15s; }
-.session-item:hover { background:var(--light); }
-.session-item.active { background:var(--light); border-left:3px solid var(--rose); }
-.session-cname { font-size:13px; font-weight:600; }
-.session-preview { font-size:11px; color:var(--mid); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.session-time { font-size:10px; color:#b09080; }
-.new-badge { display:inline-block; width:8px; height:8px; border-radius:50%; background:#e24b4a; margin-left:6px; vertical-align:middle; }
-.chat-panel { flex:1; display:flex; flex-direction:column; background:#fff; border:1px solid var(--border); border-left:none; border-radius:0 12px 12px 0; }
-.chat-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--mid); font-size:13px; }
-.chat-panel-header { padding:14px 18px; border-bottom:1px solid var(--border); }
-.chat-panel-header h3 { font-size:14px; }
-.chat-panel-header p { font-size:11px; color:var(--mid); }
-.chat-msgs { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
-.msg { max-width:72%; padding:10px 14px; border-radius:18px; font-size:13px; line-height:1.5; }
-.msg.customer { background:var(--light); color:var(--dark); border-radius:18px 18px 18px 4px; align-self:flex-start; }
-.msg.admin { background:var(--rose); color:#fff; border-radius:18px 18px 4px 18px; align-self:flex-end; }
-.msg-time { font-size:10px; opacity:.6; margin-top:3px; }
-.chat-send-area { padding:12px; border-top:1px solid var(--border); display:flex; gap:8px; }
-.chat-send-area input { flex:1; padding:10px 14px; border:1px solid var(--border); border-radius:20px; font-size:13px; outline:none; }
-.chat-send-area input:focus { border-color:var(--rose); }
-.chat-send-area button { padding:10px 18px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px; }
+:root{--cream:#faf6f1;--rose:#c4a898;--dark:#2c2320;--mid:#8a6f65;--light:#f3ece6;--border:#ddd0c8;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:"Segoe UI",sans-serif;background:#f0ebe4;color:var(--dark);}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.login-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:40px;width:340px;text-align:center;}
+.login-card h1{font-family:Georgia,serif;font-size:28px;letter-spacing:8px;margin-bottom:4px;}
+.login-card p{font-size:11px;letter-spacing:3px;color:var(--rose);margin-bottom:28px;}
+.login-card input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:12px;outline:none;}
+.login-card input:focus{border-color:var(--rose);}
+.login-card button{width:100%;padding:12px;background:var(--rose);color:#fff;border:none;border-radius:8px;font-size:13px;letter-spacing:2px;cursor:pointer;}
+.login-err{color:#a32d2d;font-size:12px;margin-top:8px;display:none;}
+.admin-layout{display:flex;height:100vh;}
+.sidebar{width:190px;background:var(--dark);display:flex;flex-direction:column;padding:24px 0;flex-shrink:0;}
+.sidebar-brand{font-family:Georgia,serif;font-size:18px;letter-spacing:6px;color:#fff;text-align:center;padding:0 16px 24px;border-bottom:1px solid #3a2e2b;margin-bottom:16px;}
+.sidebar-brand small{display:block;font-family:"Segoe UI",sans-serif;font-size:9px;letter-spacing:3px;color:var(--rose);margin-top:2px;}
+.nav-item{padding:11px 18px;color:#c4a898;font-size:12px;cursor:pointer;border-left:3px solid transparent;transition:.2s;display:flex;align-items:center;gap:8px;}
+.nav-item:hover{background:rgba(255,255,255,.05);}
+.nav-item.active{color:#fff;border-left-color:var(--rose);background:rgba(196,168,152,.1);}
+.notif-dot{width:7px;height:7px;border-radius:50%;background:#e24b4a;margin-left:auto;display:none;}
+.notif-dot.show{display:block;}
+.sidebar-logout{margin-top:auto;padding:11px 18px;color:#8a6f65;font-size:12px;cursor:pointer;}
+.sidebar-logout:hover{color:#fff;}
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.topbar{background:#fff;border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;}
+.topbar h2{font-size:15px;font-weight:500;}
+.content{flex:1;overflow-y:auto;padding:20px;}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;}
+.stat-num{font-size:30px;font-family:Georgia,serif;color:var(--rose);}
+.stat-label{font-size:10px;letter-spacing:2px;color:var(--mid);margin-top:4px;}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;}
+th{background:var(--light);padding:11px 14px;font-size:10px;letter-spacing:2px;color:var(--mid);text-align:left;}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;cursor:pointer;}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;}
+.design-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.design-card img{width:100%;height:170px;object-fit:cover;}
+.design-card-body{padding:13px;}
+.design-card-name{font-size:13px;font-weight:600;margin-bottom:2px;}
+.design-card-phone{font-size:11px;color:var(--mid);margin-bottom:8px;}
+.ai-box{background:var(--light);border-radius:8px;padding:9px;font-size:11px;color:var(--mid);line-height:1.6;white-space:pre-wrap;max-height:110px;overflow-y:auto;margin-bottom:9px;}
+.admin-review input{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:5px;}
+.admin-review button{width:100%;padding:6px;background:var(--rose);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;}
+.chat-layout{display:flex;height:calc(100vh - 130px);}
+.session-list{width:240px;background:#fff;border:1px solid var(--border);border-radius:12px 0 0 12px;overflow-y:auto;flex-shrink:0;}
+.session-item{padding:13px 15px;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s;}
+.session-item:hover{background:var(--light);}
+.session-item.active{background:var(--light);border-left:3px solid var(--rose);}
+.session-cname{font-size:13px;font-weight:600;}
+.session-preview{font-size:11px;color:var(--mid);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chat-panel{flex:1;display:flex;flex-direction:column;background:#fff;border:1px solid var(--border);border-left:none;border-radius:0 12px 12px 0;}
+.chat-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:13px;}
+.chat-panel-header{padding:13px 17px;border-bottom:1px solid var(--border);}
+.chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;}
+.msg{max-width:72%;padding:9px 13px;border-radius:18px;font-size:13px;line-height:1.5;}
+.msg.customer{background:var(--light);color:var(--dark);border-radius:18px 18px 18px 4px;align-self:flex-start;}
+.msg.admin{background:var(--rose);color:#fff;border-radius:18px 18px 4px 18px;align-self:flex-end;}
+.msg-time{font-size:10px;opacity:.6;margin-top:3px;}
+.chat-send-area{padding:11px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.chat-send-area input{flex:1;padding:9px 13px;border:1px solid var(--border);border-radius:20px;font-size:13px;outline:none;}
+.chat-send-area input:focus{border-color:var(--rose);}
+.chat-send-area button{padding:9px 17px;background:var(--rose);color:#fff;border:none;border-radius:20px;cursor:pointer;font-size:13px;}
+/* ── Calendar ── */
+.cal-wrap{display:grid;grid-template-columns:290px 1fr;gap:18px;height:calc(100vh - 150px);}
+.cal-left{display:flex;flex-direction:column;gap:14px;}
+.mini-cal{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;}
+.mini-cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.mini-cal-hdr button{border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);padding:2px 8px;}
+.mini-cal-hdr span{font-family:Georgia,serif;font-size:13px;letter-spacing:2px;}
+.mini-cal-days{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;}
+.mini-cal-days span{font-size:9px;color:var(--mid);font-weight:700;padding:3px 0;}
+.mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px;}
+.mday{padding:3px 1px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;min-height:32px;justify-content:center;}
+.mday:hover{background:var(--light);}
+.mday.empty{cursor:default;pointer-events:none;}
+.mday .dn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.mday.is-today .dn{background:var(--rose);color:#fff;}
+.mday.is-sel{background:var(--light);}
+.mdot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
+.mdot-a{background:var(--rose);}
+.mdot-s{background:#63c95e;}
+.upcoming{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;flex:1;overflow-y:auto;}
+.ucard{padding:9px 10px 9px 12px;border-radius:0 8px 8px 0;margin-bottom:8px;cursor:pointer;}
+.cal-right{background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;}
+.cal-day-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cal-day-hdr h3{font-family:Georgia,serif;font-size:15px;letter-spacing:1px;}
+.open-all-btn{padding:7px 15px;background:var(--rose);color:#fff;border:none;border-radius:20px;font-size:11px;cursor:pointer;letter-spacing:1px;}
+.timeline{flex:1;overflow-y:auto;padding:14px 18px;}
+.trow{display:flex;align-items:center;gap:11px;margin-bottom:7px;}
+.ttime{width:68px;font-size:11px;color:var(--mid);text-align:right;flex-shrink:0;}
+.tblock{flex:1;border-radius:8px;padding:8px 13px;transition:.15s;}
+.tb-open{background:#edfaed;border:1.5px solid #63c95e;display:flex;align-items:center;justify-content:space-between;}
+.tb-empty{border:1.5px dashed var(--border);cursor:pointer;}
+.tb-empty:hover{border-color:var(--rose);background:var(--light);}
+.tb-appt-pending{background:#faeeda;border-left:4px solid #f0a500;}
+.tb-appt-confirmed{background:#eaf3de;border-left:4px solid #63c95e;}
+.tb-appt-done{background:#e6f1fb;border-left:4px solid #4a9edd;}
+.tb-appt-cancelled{background:#fcebeb;border-left:4px solid #e24b4a;}
 </style>
 </head>
 <body>
 {% if not logged_in %}
 <div class="login-wrap">
   <div class="login-card">
-    <h1>LUNÉA</h1>
-    <p>ADMIN DASHBOARD</p>
+    <h1>LUNÉA</h1><p>ADMIN DASHBOARD</p>
     <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
     <button onclick="login()">LOGIN</button>
     <div class="login-err" id="loginErr">Wrong password</div>
@@ -89,527 +119,283 @@ select.status-sel { padding:4px 8px; border:1px solid var(--border); border-radi
 </div>
 <script>
 async function login(){
-  const pw=document.getElementById('pwInput').value;
-  const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
-  const json=await res.json();
-  if(json.success)location.reload();
-  else document.getElementById('loginErr').style.display='block';
+  const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pwInput').value})});
+  const j=await r.json();if(j.success)location.reload();else document.getElementById('loginErr').style.display='block';
 }
 </script>
 {% else %}
 <div class="admin-layout">
   <div class="sidebar">
     <div class="sidebar-brand">LUNÉA<small>ADMIN</small></div>
-    <div class="nav-item active" onclick="showTab('appointments')">📅 Reservations <span class="notif-dot" id="apptDot"></span></div>
-    <div class="nav-item" onclick="showTab('availability')">🗓️ Availability <span class="notif-dot" id="availDot"></span></div>
-    <div class="nav-item" onclick="showTab('designs')">🖼️ Design Uploads <span class="notif-dot" id="designDot"></span></div>
-    <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
-    <div class="nav-item" onclick="showTab('availability')">📅 Availability <span class="notif-dot" id="availDot"></span></div>
+    <div class="nav-item active" onclick="showTab('appointments')">📋 Reservations <span class="notif-dot" id="apptDot"></span></div>
     <div class="nav-item" onclick="showTab('calendar')">📅 Calendar</div>
+    <div class="nav-item" onclick="showTab('designs')">🖼 Design Uploads <span class="notif-dot" id="designDot"></span></div>
+    <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
-    <div class="topbar">
-      <h2 id="tabTitle">Reservations · 预约管理</h2>
-      <span style="font-size:12px;color:var(--mid);">LUNÉA Nail Studio, Penang</span>
-    </div>
+    <div class="topbar"><h2 id="tabTitle">Reservations · 预约管理</h2><span style="font-size:11px;color:var(--mid);">LUNÉA Nail Studio, Penang</span></div>
     <div class="content">
+
       <div id="tab-appointments">
         <div class="stats">
           <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">TOTAL</div></div>
           <div class="stat-card"><div class="stat-num" id="statPending">0</div><div class="stat-label">PENDING</div></div>
           <div class="stat-card"><div class="stat-num" id="statConfirmed">0</div><div class="stat-label">CONFIRMED</div></div>
         </div>
-        <table><thead><tr><th>DATE &amp; TIME</th><th>NAME</th><th>PHONE</th><th>SERVICE</th><th>NOTES</th><th>STATUS</th></tr></thead>
+        <table><thead><tr><th>DATE & TIME</th><th>NAME</th><th>PHONE</th><th>SERVICE</th><th>NOTES</th><th>STATUS</th></tr></thead>
         <tbody id="apptBody"></tbody></table>
       </div>
-      <div id="tab-availability" style="display:none">
-        <div class="stats">
-          <div class="stat-card"><div class="stat-num" id="availCount">0</div><div class="stat-label">TOTAL SLOTS</div></div>
-          <div class="stat-card"><div class="stat-num" id="availOpen">0</div><div class="stat-label">OPEN</div></div>
-          <div class="stat-card"><div class="stat-num" id="availClosed">0</div><div class="stat-label">CLOSED</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
-          <div class="design-card" style="padding:20px;">
-            <div class="design-card-name">Add / update slot</div>
-            <div class="admin-review" style="margin-top:12px;">
-              <input type="date" id="availDate" placeholder="YYYY-MM-DD">
-              <input type="text" id="availTime" placeholder="Time e.g. 10:00 AM">
-              <label style="font-size:12px;color:var(--mid);margin:8px 0 4px;display:block;"><input type="checkbox" id="availOpenCheck"> Mark as available</label>
-              <input type="text" id="availNote" placeholder="Admin note (optional)">
-              <button onclick="saveAvailability()">Save slot</button>
-            </div>
-          </div>
-          <div class="design-card" style="padding:20px;">
-            <div class="design-card-name">How to use</div>
-            <div style="font-size:12px;color:var(--mid);line-height:1.6;">
-              Add a reservation date and time, then mark it available. Customers will only see slots marked available. Remove slots when you want them hidden.
-            </div>
-          </div>
-        </div>
-        <table><thead><tr><th>DATE</th><th>TIME</th><th>AVAILABLE</th><th>NOTE</th><th>ACTION</th></tr></thead>
-        <tbody id="availBody"></tbody></table>
-      </div>
-      <div id="tab-designs" style="display:none"><div class="design-grid" id="designGrid"></div></div>
 
-      <!-- CALENDAR TAB -->
       <div id="tab-calendar" style="display:none">
-        <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;height:calc(100vh - 150px);">
-
-          <!-- LEFT -->
-          <div style="display:flex;flex-direction:column;gap:14px;">
-            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                <button onclick="calPrev()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">‹</button>
-                <span id="miniCalTitle" style="font-family:Georgia,serif;font-size:13px;letter-spacing:2px;"></span>
-                <button onclick="calNext()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">›</button>
+        <div class="cal-wrap">
+          <div class="cal-left">
+            <div class="mini-cal">
+              <div class="mini-cal-hdr">
+                <button onclick="calPrev()">‹</button>
+                <span id="miniCalTitle"></span>
+                <button onclick="calNext()">›</button>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;">
-                <span style="font-size:10px;color:var(--mid);font-weight:700;">Mo</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Tu</span><span style="font-size:10px;color:var(--mid);font-weight:700;">We</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Th</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Fr</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Sa</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Su</span>
+              <div class="mini-cal-days">
+                <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
               </div>
-              <div id="miniCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px;"></div>
+              <div class="mini-cal-grid" id="miniCalGrid"></div>
             </div>
-            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;flex:1;overflow-y:auto;">
+            <div class="upcoming">
               <div style="font-size:10px;letter-spacing:3px;color:var(--mid);margin-bottom:10px;">UPCOMING</div>
               <div id="upcomingList"></div>
             </div>
           </div>
-
-          <!-- RIGHT: Day timeline -->
-          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;">
-            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-              <div id="dayViewTitle" style="font-family:Georgia,serif;font-size:16px;letter-spacing:2px;"></div>
-              <button onclick="quickOpenAll()" style="padding:7px 16px;background:var(--rose);color:#fff;border:none;border-radius:20px;font-size:11px;cursor:pointer;letter-spacing:1px;">+ Open All Slots</button>
+          <div class="cal-right">
+            <div class="cal-day-hdr">
+              <h3 id="dayTitle">Select a date</h3>
+              <button class="open-all-btn" onclick="quickOpenAll()">+ Open All Slots</button>
             </div>
-            <div id="dayTimeline" style="flex:1;overflow-y:auto;padding:16px 20px;"></div>
+            <div class="timeline" id="dayTimeline"></div>
           </div>
         </div>
+      </div>
+
+      <div id="tab-designs" style="display:none">
+        <div class="design-grid" id="designGrid"></div>
       </div>
 
       <div id="tab-chat" style="display:none">
         <div class="chat-layout">
           <div class="session-list" id="sessionList">
-            <div style="padding:14px 16px;font-size:11px;letter-spacing:2px;color:var(--mid);border-bottom:1px solid var(--border);">CUSTOMERS</div>
+            <div style="padding:13px 15px;font-size:10px;letter-spacing:2px;color:var(--mid);border-bottom:1px solid var(--border);">CUSTOMERS</div>
           </div>
           <div class="chat-panel" id="chatPanel"><div class="chat-empty">Select a customer to start chatting</div></div>
         </div>
       </div>
-      <div id="tab-availability" style="display:none">
-        <div class="stats">
-          <div class="stat-card"><div class="stat-num" id="totalSlots">0</div><div class="stat-label">TOTAL SLOTS</div></div>
-          <div class="stat-card"><div class="stat-num" id="openSlots">0</div><div class="stat-label">OPEN</div></div>
-          <div class="stat-card"><div class="stat-num" id="closedSlots">0</div><div class="stat-label">CLOSED</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:8px;">
-          <!-- Calendar -->
-          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-              <button onclick="calPrev()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">‹</button>
-              <h3 id="calTitle" style="font-family:Georgia,serif;letter-spacing:2px;font-size:16px;"></h3>
-              <button onclick="calNext()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">›</button>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;">
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Sun</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Mon</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Tue</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Wed</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Thu</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Fri</div>
-              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Sat</div>
-            </div>
-            <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;"></div>
-          </div>
-          <!-- Side panel -->
-          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;">
-            <div id="sidePanel">
-              <p style="color:var(--mid);font-size:13px;">Click a date to manage slots</p>
-            </div>
-          </div>
-        </div>
-      </div>
+
     </div>
   </div>
 </div>
-<style>
-.cal-day { border-radius:8px; padding:6px 4px; cursor:pointer; transition:.15s; min-height:56px; font-size:13px; position:relative; }
-.cal-day:hover { background:var(--light); }
-.cal-day.today { border:2px solid var(--rose); }
-.cal-day.selected { background:var(--rose) !important; color:#fff; }
-.cal-day.past { opacity:.4; cursor:default; }
-.cal-day.empty { cursor:default; }
-.cal-dot { width:6px; height:6px; border-radius:50%; margin:2px auto 0; }
-.dot-open { background:#63c95e; }
-.dot-closed { background:#e24b4a; }
-.time-chip { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12px; }
-.chip-open { background:#eaf3de; color:#3b6d11; }
-.chip-closed { background:#fcebeb; color:#a32d2d; }
-</style>
 <script>
-let calYear, calMonth, calData = {}, selectedDate = null;
-
-function initCal() {
-  const now = new Date();
-  calYear = now.getFullYear(); calMonth = now.getMonth();
-  loadCalMonth();
-}
-
-async function loadCalMonth() {
-  const monthStr = calYear+'-'+(calMonth+1).toString().padStart(2,'0');
-  document.getElementById('calTitle').textContent = new Date(calYear,calMonth,1).toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase();
-  const res = await fetch('/api/admin/availability?month='+monthStr);
-  const data = await res.json();
-  calData = {};
-  data.forEach(s => {
-    if (!calData[s.date]) calData[s.date] = [];
-    calData[s.date].push(s);
-  });
-  updateStats(data);
-  renderCal();
-}
-
-function updateStats(data) {
-  document.getElementById('totalSlots').textContent = data.length;
-  document.getElementById('openSlots').textContent = data.filter(s=>s.is_available).length;
-  document.getElementById('closedSlots').textContent = data.filter(s=>!s.is_available).length;
-}
-
-function renderCal() {
-  const grid = document.getElementById('calGrid');
-  grid.innerHTML = '';
-  const first = new Date(calYear, calMonth, 1).getDay();
-  const days = new Date(calYear, calMonth+1, 0).getDate();
-  const today = new Date().toISOString().split('T')[0];
-  for (let i=0;i<first;i++) {
-    const el=document.createElement('div'); el.className='cal-day empty'; grid.appendChild(el);
-  }
-  for (let d=1;d<=days;d++) {
-    const dateStr = calYear+'-'+(calMonth+1).toString().padStart(2,'0')+'-'+d.toString().padStart(2,'0');
-    const slots = calData[dateStr] || [];
-    const openCount = slots.filter(s=>s.is_available).length;
-    const el = document.createElement('div');
-    el.className = 'cal-day' + (dateStr===today?' today':'') + (dateStr<today?' past':'') + (dateStr===selectedDate?' selected':'');
-    el.innerHTML = `<div>${d}</div>${openCount>0?`<div class="cal-dot dot-open"></div>`:''}${slots.length>openCount?`<div class="cal-dot dot-closed"></div>`:''}`;
-    if (dateStr >= today) el.onclick = () => selectDate(dateStr);
-    grid.appendChild(el);
-  }
-}
-
-function selectDate(dateStr) {
-  selectedDate = dateStr;
-  renderCal();
-  const slots = calData[dateStr] || [];
-  const label = new Date(dateStr+'T12:00:00').toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'});
-  const times = ['10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM','1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM','4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM'];
-  document.getElementById('sidePanel').innerHTML = `
-    <h4 style="font-family:Georgia,serif;margin-bottom:4px;font-size:14px;">${label}</h4>
-    <p style="font-size:11px;color:var(--mid);margin-bottom:14px;">${slots.length} slot(s) set</p>
-    <div style="margin-bottom:14px;">
-      ${slots.map(s=>`<div class="time-chip ${s.is_available?'chip-open':'chip-closed'}">
-        <span>${s.time}</span>
-        <div style="display:flex;gap:6px;">
-          <span style="cursor:pointer;font-size:11px;" onclick="toggleSlot(${s.id},'${dateStr}','${s.time}',${!s.is_available})">${s.is_available?'Close':'Open'}</span>
-          <span style="cursor:pointer;font-size:11px;" onclick="deleteSlot(${s.id},'${dateStr}')">✕</span>
-        </div>
-      </div>`).join('')}
-    </div>
-    <div style="font-size:12px;color:var(--mid);margin-bottom:6px;">Add time slot:</div>
-    <select id="newTime" style="width:100%;padding:7px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:6px;">
-      ${times.filter(t=>!slots.find(s=>s.time===t)).map(t=>`<option>${t}</option>`).join('')}
-    </select>
-    <input id="newNote" type="text" placeholder="Note (optional)" style="width:100%;padding:7px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:8px;">
-    <button onclick="addSlot('${dateStr}')" style="width:100%;padding:8px;background:var(--rose);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">+ Add Slot</button>`;
-}
-
-async function addSlot(date) {
-  const time = document.getElementById('newTime').value;
-  const note = document.getElementById('newNote').value;
-  if (!time) return;
-  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:true,note})});
-  await loadCalMonth(); selectDate(date);
-}
-
-async function toggleSlot(id, date, time, val) {
-  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:val,note:''})});
-  await loadCalMonth(); selectDate(date);
-}
-
-async function deleteSlot(id, date) {
-  await fetch('/api/admin/availability/'+id,{method:'DELETE'});
-  await loadCalMonth(); selectDate(date);
-}
-
-function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} selectedDate=null; loadCalMonth(); }
-function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} selectedDate=null; loadCalMonth(); }
-</script>
 let socket,activeSession=null;
-const tabs={appointments:'Reservations · 预约管理',availability:'Availability · 可预约管理',designs:'Design Uploads · 设计图评估',chat:'Live Chat · 在线聊天'};
+const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天"};
 function showTab(name){
-  ['appointments','availability','designs','chat'].forEach(t=>document.getElementById('tab-'+t).style.display=t===name?'block':'none');
-  document.querySelectorAll('.nav-item').forEach((el,i)=>el.classList.toggle('active',i===Object.keys(tabs).indexOf(name)));
-  document.getElementById('tabTitle').textContent=tabs[name];
-  if(name==='appointments')loadAppointments();
-  if(name==='availability')loadAvailability();
-  if(name==='designs')loadDesigns();
-  if(name==='chat'){loadSessions();document.getElementById('chatDot').classList.remove('show');}
-  if(name==='calendar'){initCalendar();}
-  if(name==='availability'){initCal();}
+  Object.keys(TABS).forEach(t=>{
+    const el=document.getElementById("tab-"+t);
+    if(el)el.style.display=t===name?"block":"none";
+  });
+  document.querySelectorAll(".nav-item").forEach((el,i)=>el.classList.toggle("active",i===Object.keys(TABS).indexOf(name)));
+  document.getElementById("tabTitle").textContent=TABS[name];
+  if(name==="appointments")loadAppointments();
+  if(name==="calendar")initCalendar();
+  if(name==="designs")loadDesigns();
+  if(name==="chat"){loadSessions();document.getElementById("chatDot").classList.remove("show");}
 }
+
+/* ── Appointments ── */
 async function loadAppointments(){
-  const res=await fetch('/api/admin/appointments');const data=await res.json();
-  document.getElementById('statTotal').textContent=data.length;
-  document.getElementById('statPending').textContent=data.filter(d=>d.status==='pending').length;
-  document.getElementById('statConfirmed').textContent=data.filter(d=>d.status==='confirmed').length;
-  document.getElementById('apptBody').innerHTML=data.map(a=>`<tr>
+  const data=await fetch("/api/admin/appointments").then(r=>r.json());
+  document.getElementById("statTotal").textContent=data.length;
+  document.getElementById("statPending").textContent=data.filter(d=>d.status==="pending").length;
+  document.getElementById("statConfirmed").textContent=data.filter(d=>d.status==="confirmed").length;
+  document.getElementById("apptBody").innerHTML=data.map(a=>`<tr>
     <td>${a.date}<br><small style="color:var(--mid)">${a.time}</small></td>
     <td>${a.name}</td><td>${a.phone}</td>
     <td style="font-size:12px">${a.service}</td>
-    <td style="font-size:12px;color:var(--mid)">${a.notes||'–'}</td>
+    <td style="font-size:12px;color:var(--mid)">${a.notes||"–"}</td>
     <td><select class="status-sel" onchange="updateStatus(${a.id},this.value)">
-      <option value="pending" ${a.status==='pending'?'selected':''}>Pending</option>
-      <option value="confirmed" ${a.status==='confirmed'?'selected':''}>Confirmed</option>
-      <option value="done" ${a.status==='done'?'selected':''}>Done</option>
-      <option value="cancelled" ${a.status==='cancelled'?'selected':''}>Cancelled</option>
-    </select></td></tr>`).join('');
+      <option value="pending" ${a.status==="pending"?"selected":""}>Pending</option>
+      <option value="confirmed" ${a.status==="confirmed"?"selected":""}>Confirmed</option>
+      <option value="done" ${a.status==="done"?"selected":""}>Done</option>
+      <option value="cancelled" ${a.status==="cancelled"?"selected":""}>Cancelled</option>
+    </select></td></tr>`).join("");
 }
 async function updateStatus(id,status){
-  await fetch('/api/admin/appointments/'+id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+  await fetch("/api/admin/appointments/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
   loadAppointments();
 }
-async function loadAvailability(){
-  const res=await fetch('/api/admin/availability');
-  const data=await res.json();
-  document.getElementById('availCount').textContent=data.length;
-  document.getElementById('availOpen').textContent=data.filter(d=>d.available===1).length;
-  document.getElementById('availClosed').textContent=data.filter(d=>d.available===0).length;
-  document.getElementById('availBody').innerHTML=data.map(slot=>`<tr>
-    <td>${slot.date}</td>
-    <td>${slot.time}</td>
-    <td>${slot.available===1?'Yes':'No'}</td>
-    <td>${slot.note||'–'}</td>
-    <td><button style="padding:6px 10px;background:#e24b4a;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="removeAvailability(${slot.id})">Delete</button></td>
-  </tr>`).join('') || '<tr><td colspan="5" style="color:var(--mid);font-size:13px;text-align:center;">No availability slots configured yet.</td></tr>';
+
+/* ── Calendar ── */
+let calY,calM,calSelDate,calAppts=[],calSlots=[];
+const TIMES=["10:00 AM","10:30 AM","11:00 AM","11:30 AM","12:00 PM","12:30 PM","1:00 PM","1:30 PM","2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM","5:00 PM","5:30 PM","6:00 PM"];
+
+async function initCalendar(){
+  if(!calY){const n=new Date();calY=n.getFullYear();calM=n.getMonth();calSelDate=n.toISOString().split("T")[0];}
+  await loadCalData();
 }
-async function saveAvailability(){
-  const date=document.getElementById('availDate').value;
-  const time=document.getElementById('availTime').value.trim();
-  const available=document.getElementById('availOpenCheck').checked;
-  const note=document.getElementById('availNote').value.trim();
-  if(!date||!time){alert('Please enter date and time for the slot.');return;}
-  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,available,note})});
-  document.getElementById('availDate').value='';
-  document.getElementById('availTime').value='';
-  document.getElementById('availOpenCheck').checked=false;
-  document.getElementById('availNote').value='';
-  loadAvailability();
+async function loadCalData(){
+  const ms=calY+"-"+(calM+1).toString().padStart(2,"0");
+  const [a,s]=await Promise.all([
+    fetch("/api/admin/appointments").then(r=>r.json()),
+    fetch("/api/admin/availability?month="+ms).then(r=>r.json())
+  ]);
+  calAppts=a;calSlots=s;
+  renderMiniCal();renderUpcoming();if(calSelDate)renderDayView(calSelDate);
 }
-async function removeAvailability(id){
-  if(!confirm('Remove this slot?')) return;
-  await fetch(`/api/admin/availability/${id}`,{method:'DELETE'});
-  loadAvailability();
+function renderMiniCal(){
+  document.getElementById("miniCalTitle").textContent=new Date(calY,calM,1).toLocaleDateString("en",{month:"long",year:"numeric"}).toUpperCase();
+  const grid=document.getElementById("miniCalGrid");grid.innerHTML="";
+  const fd=new Date(calY,calM,1).getDay(),fm=fd===0?6:fd-1;
+  const dm=new Date(calY,calM+1,0).getDate();
+  const today=new Date().toISOString().split("T")[0];
+  for(let i=0;i<fm;i++){const e=document.createElement("div");e.className="mday empty";grid.appendChild(e);}
+  for(let d=1;d<=dm;d++){
+    const ds=calY+"-"+(calM+1).toString().padStart(2,"0")+"-"+d.toString().padStart(2,"0");
+    const ha=calAppts.some(a=>a.date===ds&&a.status!=="cancelled");
+    const hs=calSlots.some(s=>s.date===ds&&s.is_available);
+    const el=document.createElement("div");
+    el.className="mday"+(ds===today?" is-today":"")+(ds===calSelDate?" is-sel":"");
+    el.innerHTML=`<span class="dn">${d}</span>`+(ha?`<i class="mdot mdot-a" style="font-style:normal"></i>`:hs?`<i class="mdot mdot-s" style="font-style:normal"></i>`:"");
+    el.onclick=()=>{calSelDate=ds;renderMiniCal();renderDayView(ds);};
+    grid.appendChild(el);
+  }
 }
+function renderUpcoming(){
+  const today=new Date().toISOString().split("T")[0];
+  const up=calAppts.filter(a=>a.date>=today&&a.status!=="cancelled"&&a.status!=="done").sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).slice(0,8);
+  const col={pending:"#f0a500",confirmed:"#63c95e",done:"#4a9edd"};
+  document.getElementById("upcomingList").innerHTML=up.length?up.map(a=>`<div class="ucard" style="border-left:3px solid ${col[a.status]||"#ccc"};background:var(--light);" onclick="calSelDate='${a.date}';renderMiniCal();renderDayView('${a.date}')">
+    <div style="font-size:12px;font-weight:600;">${a.name}</div>
+    <div style="font-size:10px;color:var(--mid);">${a.date} · ${a.time}</div>
+    <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service}</div>
+  </div>`).join(""):"<p style='font-size:12px;color:var(--mid);'>No upcoming appointments</p>";
+}
+function renderDayView(ds){
+  document.getElementById("dayTitle").textContent=new Date(ds+"T12:00:00").toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric",year:"numeric"}).toUpperCase();
+  const da=calAppts.filter(a=>a.date===ds);
+  const dsl=calSlots.filter(s=>s.date===ds);
+  document.getElementById("dayTimeline").innerHTML=TIMES.map(t=>{
+    const ap=da.find(a=>a.time===t);
+    const sl=dsl.find(s=>s.time===t);
+    let block="";
+    if(ap){
+      block=`<div class="tblock tb-appt-${ap.status}">
+        <div style="font-size:13px;font-weight:600;">${ap.name} <span style="font-size:10px;float:right;opacity:.7">${ap.status.toUpperCase()}</span></div>
+        <div style="font-size:11px;opacity:.8;">${ap.service}</div>
+        <div style="font-size:10px;opacity:.6;">${ap.phone}${ap.notes?" · "+ap.notes:""}</div>
+      </div>`;
+    } else if(sl&&sl.is_available){
+      block=`<div class="tblock tb-open">
+        <span style="font-size:12px;color:#2a7a2a;">✓ Open${sl.note?" · "+sl.note:""}</span>
+        <button onclick="delSlot(${sl.id})" style="border:none;background:none;color:#aaa;cursor:pointer;font-size:15px;">✕</button>
+      </div>`;
+    } else {
+      block=`<div class="tblock tb-empty" onclick="addSlot('${ds}','${t}')"><span style="font-size:11px;color:var(--mid);">+ Open slot</span></div>`;
+    }
+    return `<div class="trow"><div class="ttime">${t}</div>${block}</div>`;
+  }).join("");
+}
+async function addSlot(date,time){
+  await fetch("/api/admin/availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date,time,is_available:true,note:""})});
+  await loadCalData();
+}
+async function delSlot(id){
+  await fetch("/api/admin/availability/"+id,{method:"DELETE"});
+  await loadCalData();
+}
+async function quickOpenAll(){
+  if(!calSelDate)return;
+  for(const t of TIMES){
+    if(!calSlots.find(s=>s.date===calSelDate&&s.time===t))
+      await fetch("/api/admin/availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:calSelDate,time:t,is_available:true,note:""})});
+  }
+  await loadCalData();
+}
+function calPrev(){calM--;if(calM<0){calM=11;calY--;}calSelDate=null;loadCalData();}
+function calNext(){calM++;if(calM>11){calM=0;calY++;}calSelDate=null;loadCalData();}
+
+/* ── Designs ── */
 async function loadDesigns(){
-  const res=await fetch('/api/admin/designs');const data=await res.json();
-  document.getElementById('designGrid').innerHTML=data.map(d=>`
-    <div class="design-card">
-      <img src="/uploads/${d.filename}" onerror="this.style.display='none'">
-      <div class="design-card-body">
-        <div class="design-card-name">${d.customer_name}</div>
-        <div class="design-card-phone">${d.phone||'No phone'} · ${d.created_at}</div>
-        <div class="ai-box">🤖 ${d.ai_analysis||'–'}</div>
-        <div style="font-size:11px;color:var(--mid);margin-bottom:6px;">AI Estimate: <strong>${d.price_estimate||'–'}</strong></div>
-        ${d.admin_price?`<div class="admin-note-display">✓ Admin: ${d.admin_price} — ${d.admin_note}</div>`:`
-        <div class="admin-review">
-          <input type="text" id="price_${d.id}" placeholder="Your price e.g. RM95" value="${d.admin_price||''}">
-          <input type="text" id="note_${d.id}" placeholder="Note for customer...">
-          <button onclick="saveReview(${d.id})">Save Review</button>
-        </div>`}
-      </div>
-    </div>`).join('')||'<p style="color:var(--mid);font-size:13px;">No design uploads yet.</p>';
-  document.getElementById('designDot').classList.remove('show');
+  const data=await fetch("/api/admin/designs").then(r=>r.json());
+  document.getElementById("designGrid").innerHTML=data.map(d=>`<div class="design-card">
+    <img src="/uploads/${d.filename}" onerror="this.style.display='none'">
+    <div class="design-card-body">
+      <div class="design-card-name">${d.customer_name}</div>
+      <div class="design-card-phone">${d.phone||"No phone"} · ${d.created_at}</div>
+      <div class="ai-box">🤖 ${d.ai_analysis||"–"}</div>
+      <div style="font-size:11px;color:var(--mid);margin-bottom:6px;">AI Estimate: <strong>${d.price_estimate||"–"}</strong></div>
+      ${d.admin_price?`<div style="background:#eaf3de;color:#3b6d11;border-radius:6px;padding:8px;font-size:12px;">✓ ${d.admin_price} — ${d.admin_note}</div>`:`
+      <div class="admin-review">
+        <input type="text" id="price_${d.id}" placeholder="Your price e.g. RM95">
+        <input type="text" id="note_${d.id}" placeholder="Note for customer...">
+        <button onclick="saveReview(${d.id})">Save Review</button>
+      </div>`}
+    </div></div>`).join("")||"<p style='color:var(--mid);font-size:13px;'>No design uploads yet.</p>";
+  document.getElementById("designDot").classList.remove("show");
 }
 async function saveReview(id){
-  const price=document.getElementById('price_'+id).value.trim();
-  const note=document.getElementById('note_'+id).value.trim();
-  await fetch('/api/admin/designs/'+id+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({price,note})});
+  await fetch("/api/admin/designs/"+id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({price:document.getElementById("price_"+id).value,note:document.getElementById("note_"+id).value})});
   loadDesigns();
 }
+
+/* ── Chat ── */
 function initSocket(){
   socket=io();
-  socket.emit('join',{session_id:'admin-main',is_admin:true});
-  socket.on('new_appointment',()=>document.getElementById('apptDot').classList.add('show'));
-  socket.on('new_design',()=>document.getElementById('designDot').classList.add('show'));
-  socket.on('new_session',()=>{loadSessions();document.getElementById('chatDot').classList.add('show');});
-  socket.on('customer_message',d=>{
-    document.getElementById('chatDot').classList.add('show');
-    if(d.session_id===activeSession)appendMsg('customer',d.message,d.timestamp);
-    else{const el=document.querySelector('[data-sid="'+d.session_id+'"] .new-badge');if(el)el.style.display='inline-block';}
+  socket.emit("join",{session_id:"admin-main",is_admin:true});
+  socket.on("new_appointment",()=>document.getElementById("apptDot").classList.add("show"));
+  socket.on("new_design",()=>document.getElementById("designDot").classList.add("show"));
+  socket.on("new_session",()=>{loadSessions();document.getElementById("chatDot").classList.add("show");});
+  socket.on("customer_message",d=>{
+    document.getElementById("chatDot").classList.add("show");
+    if(d.session_id===activeSession)appendMsg("customer",d.message,d.timestamp);
+    else{const el=document.querySelector(`[data-sid="${d.session_id}"] .new-badge`);if(el)el.style.display="inline-block";}
   });
-  socket.on('receive_message',d=>{if(d.session_id===activeSession&&d.sender==='admin')appendMsg('admin',d.message,d.timestamp);});
+  socket.on("receive_message",d=>{if(d.session_id===activeSession&&d.sender==="admin")appendMsg("admin",d.message,d.timestamp);});
 }
 async function loadSessions(){
-  const res=await fetch('/api/admin/chat-sessions');const data=await res.json();
-  const list=document.getElementById('sessionList');const header=list.children[0];
-  list.innerHTML='';list.appendChild(header);
+  const data=await fetch("/api/admin/chat-sessions").then(r=>r.json());
+  const list=document.getElementById("sessionList");const hdr=list.children[0];
+  list.innerHTML="";list.appendChild(hdr);
   data.forEach(s=>{
-    const el=document.createElement('div');el.className='session-item'+(s.id===activeSession?' active':'');el.dataset.sid=s.id;
-    el.innerHTML=`<div class="session-cname">${s.customer_name} <span class="new-badge" style="display:none"></span></div>
-      <div class="session-preview">${s.last_message||'No messages yet'}</div>
-      <div class="session-time">${s.phone||''} · ${s.last_time||s.created_at}</div>`;
+    const el=document.createElement("div");el.className="session-item"+(s.id===activeSession?" active":"");el.dataset.sid=s.id;
+    el.innerHTML=`<div class="session-cname">${s.customer_name} <span class="new-badge" style="display:none;width:8px;height:8px;border-radius:50%;background:#e24b4a;display:none;margin-left:4px;"></span></div>
+      <div class="session-preview">${s.last_message||"No messages yet"}</div>
+      <div style="font-size:10px;color:#b09080;">${s.phone||""} · ${s.last_time||s.created_at}</div>`;
     el.onclick=()=>openSession(s.id,s.customer_name,s.phone);list.appendChild(el);
   });
 }
 async function openSession(sid,name,phone){
   activeSession=sid;
-  document.querySelectorAll('.session-item').forEach(el=>el.classList.toggle('active',el.dataset.sid===sid));
-  const badge=document.querySelector('[data-sid="'+sid+'"] .new-badge');if(badge)badge.style.display='none';
-  socket.emit('admin_join_session',{session_id:sid});
-  document.getElementById('chatPanel').innerHTML=`
-    <div class="chat-panel-header"><h3>${name}</h3><p>${phone||'No phone'}</p></div>
+  document.querySelectorAll(".session-item").forEach(el=>el.classList.toggle("active",el.dataset.sid===sid));
+  socket.emit("admin_join_session",{session_id:sid});
+  document.getElementById("chatPanel").innerHTML=`
+    <div class="chat-panel-header"><h3 style="font-size:14px;">${name}</h3><p style="font-size:11px;color:var(--mid);">${phone||"No phone"}</p></div>
     <div class="chat-msgs" id="adminMsgs"></div>
     <div class="chat-send-area">
       <input type="text" id="adminInput" placeholder="Reply to ${name}..." onkeydown="if(event.key==='Enter')adminSend()">
       <button onclick="adminSend()">Send</button>
     </div>`;
-  const res=await fetch('/api/chat/messages/'+sid);const msgs=await res.json();
+  const msgs=await fetch("/api/chat/messages/"+sid).then(r=>r.json());
   msgs.forEach(m=>appendMsg(m.sender,m.message,m.timestamp));
 }
 function appendMsg(sender,message,time){
-  const msgs=document.getElementById('adminMsgs');if(!msgs)return;
-  const div=document.createElement('div');div.className='msg '+sender;
-  div.innerHTML=message.replace(/\n/g,'<br>')+`<div class="msg-time">${time?(time.split(' ')[1]||time):''}</div>`;
+  const msgs=document.getElementById("adminMsgs");if(!msgs)return;
+  const div=document.createElement("div");div.className="msg "+sender;
+  div.innerHTML=message.replace(/\n/g,"<br>")+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
   msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
 }
 function adminSend(){
-  const input=document.getElementById('adminInput');const msg=input.value.trim();
+  const input=document.getElementById("adminInput");const msg=input.value.trim();
   if(!msg||!activeSession||!socket)return;
-  socket.emit('send_message',{session_id:activeSession,sender:'admin',message:msg});input.value='';
+  socket.emit("send_message",{session_id:activeSession,sender:"admin",message:msg});input.value="";
 }
-
-/* ── Calendar ── */
-.mini-day{padding:4px 2px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;}
-.mini-day:hover{background:var(--light);}
-.mini-day.empty{cursor:default;}
-.mini-day .dn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
-.mini-day.is-today .dn{background:var(--rose);color:#fff;}
-.mini-day.is-sel{background:var(--light);}
-.mini-day .dot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
-.dot-a{background:var(--rose);}
-.dot-s{background:#63c95e;}
-.trow{display:flex;align-items:center;gap:12px;margin-bottom:7px;}
-.ttime{width:72px;font-size:11px;color:var(--mid);text-align:right;flex-shrink:0;}
-.tblock{flex:1;border-radius:8px;padding:9px 14px;cursor:pointer;transition:.15s;}
-.tblock-appt-pending{background:#faeeda;border-left:4px solid #f0a500;}
-.tblock-appt-confirmed{background:#eaf3de;border-left:4px solid #63c95e;}
-.tblock-appt-done{background:#e6f1fb;border-left:4px solid #4a9edd;}
-.tblock-appt-cancelled{background:#fcebeb;border-left:4px solid #e24b4a;}
-.tblock-open{background:#edfaed;border:1.5px solid #63c95e;}
-.tblock-empty{border:1.5px dashed var(--border);}
-.tblock-empty:hover{border-color:var(--rose);background:var(--light);}
-
-let calYear,calMonth,calSelectedDate,calAppts=[],calSlots=[];
-
-function initCalendar(){
-  if(calYear)return;
-  const n=new Date();calYear=n.getFullYear();calMonth=n.getMonth();
-  calSelectedDate=n.toISOString().split('T')[0];
-  loadCalData();
-}
-
-async function loadCalData(){
-  const ms=calYear+'-'+(calMonth+1).toString().padStart(2,'0');
-  const [a,s]=await Promise.all([
-    fetch('/api/admin/appointments').then(r=>r.json()),
-    fetch('/api/admin/availability?month='+ms).then(r=>r.json())
-  ]);
-  calAppts=a;calSlots=s;
-  renderMiniCal();renderUpcoming();renderDayView(calSelectedDate);
-}
-
-function renderMiniCal(){
-  document.getElementById('miniCalTitle').textContent=new Date(calYear,calMonth,1).toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase();
-  const grid=document.getElementById('miniCalGrid');grid.innerHTML='';
-  const fd=new Date(calYear,calMonth,1).getDay();
-  const fm=(fd===0)?6:fd-1;
-  const dm=new Date(calYear,calMonth+1,0).getDate();
-  const today=new Date().toISOString().split('T')[0];
-  for(let i=0;i<fm;i++){const e=document.createElement('div');e.className='mini-day empty';grid.appendChild(e);}
-  for(let d=1;d<=dm;d++){
-    const ds=calYear+'-'+(calMonth+1).toString().padStart(2,'0')+'-'+d.toString().padStart(2,'0');
-    const ha=calAppts.some(a=>a.date===ds&&a.status!=='cancelled');
-    const hs=calSlots.some(s=>s.date===ds&&s.is_available);
-    const el=document.createElement('div');
-    el.className='mini-day'+(ds===today?' is-today':'')+(ds===calSelectedDate?' is-sel':'');
-    el.innerHTML=`<span class="dn">${d}</span>${ha?'<i class="dot dot-a" style="font-style:normal"></i>':hs?'<i class="dot dot-s" style="font-style:normal"></i>':''}`;
-    el.onclick=()=>{calSelectedDate=ds;renderMiniCal();renderDayView(ds);};
-    grid.appendChild(el);
-  }
-}
-
-function renderUpcoming(){
-  const today=new Date().toISOString().split('T')[0];
-  const up=calAppts.filter(a=>a.date>=today&&a.status!=='cancelled'&&a.status!=='done').sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).slice(0,7);
-  const statusColor={pending:'#f0a500',confirmed:'#63c95e',done:'#4a9edd'};
-  document.getElementById('upcomingList').innerHTML=up.length?up.map(a=>`
-    <div style="padding:9px 10px 9px 12px;border-left:3px solid ${statusColor[a.status]||'#ccc'};margin-bottom:8px;border-radius:0 8px 8px 0;background:var(--light);cursor:pointer;" onclick="calSelectedDate='${a.date}';renderMiniCal();renderDayView('${a.date}')">
-      <div style="font-size:12px;font-weight:600;">${a.name}</div>
-      <div style="font-size:10px;color:var(--mid);">${a.date} · ${a.time}</div>
-      <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service}</div>
-    </div>`).join(''):'<p style="font-size:12px;color:var(--mid);">No upcoming appointments</p>';
-}
-
-const TIMES=['10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM','1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM','4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM'];
-
-function renderDayView(ds){
-  document.getElementById('dayViewTitle').textContent=new Date(ds+'T12:00:00').toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase();
-  const da=calAppts.filter(a=>a.date===ds);
-  const dsl=calSlots.filter(s=>s.date===ds);
-  document.getElementById('dayTimeline').innerHTML=TIMES.map(t=>{
-    const ap=da.find(a=>a.time===t);
-    const sl=dsl.find(s=>s.time===t);
-    let block='';
-    if(ap){
-      block=`<div class="tblock tblock-appt-${ap.status}">
-        <div style="font-size:13px;font-weight:600;">${ap.name} <span style="font-size:10px;float:right;opacity:.6">${ap.status.toUpperCase()}</span></div>
-        <div style="font-size:11px;opacity:.75;">${ap.service}</div>
-        <div style="font-size:10px;opacity:.6;">${ap.phone}${ap.notes?' · '+ap.notes:''}</div>
-      </div>`;
-    } else if(sl&&sl.is_available){
-      block=`<div class="tblock tblock-open" style="display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:12px;color:#2a7a2a;">✓ Open${sl.note?' · '+sl.note:''}</span>
-        <button onclick="delSlot(${sl.id})" style="border:none;background:none;color:#999;cursor:pointer;font-size:16px;line-height:1;">✕</button>
-      </div>`;
-    } else {
-      block=`<div class="tblock tblock-empty" onclick="addSlot('${ds}','${t}')" title="Click to open this slot">
-        <span style="font-size:11px;color:var(--mid);">+ Open slot</span>
-      </div>`;
-    }
-    return `<div class="trow"><div class="ttime">${t}</div>${block}</div>`;
-  }).join('');
-}
-
-async function addSlot(date,time){
-  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:true,note:''})});
-  await loadCalData();
-}
-
-async function delSlot(id){
-  await fetch('/api/admin/availability/'+id,{method:'DELETE'});
-  await loadCalData();
-}
-
-async function quickOpenAll(){
-  if(!calSelectedDate)return;
-  for(const t of TIMES){
-    const existing=calSlots.find(s=>s.date===calSelectedDate&&s.time===t);
-    if(!existing) await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:calSelectedDate,time:t,is_available:true,note:''})});
-  }
-  await loadCalData();
-}
-
-function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}calSelectedDate=null;loadCalData();}
-function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}calSelectedDate=null;loadCalData();}
-
-async function logout(){await fetch('/api/admin/logout',{method:'POST'});location.reload();}
+async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
 initSocket();loadAppointments();
 </script>
 {% endif %}
