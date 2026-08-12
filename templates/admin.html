@@ -65,6 +65,7 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
 .msg.customer{background:var(--light);color:var(--dark);border-radius:18px 18px 18px 4px;align-self:flex-start;}
 .msg.admin{background:var(--rose);color:#fff;border-radius:18px 18px 4px 18px;align-self:flex-end;}
 .msg-time{font-size:10px;opacity:.6;margin-top:3px;}
+.msg-img{display:block;max-width:100%;border-radius:12px;cursor:pointer;}
 .chat-send-area{padding:11px;border-top:1px solid var(--border);display:flex;gap:8px;}
 .chat-send-area input{flex:1;padding:9px 13px;border:1px solid var(--border);border-radius:20px;font-size:13px;outline:none;}
 .chat-send-area input:focus{border-color:var(--rose);}
@@ -365,7 +366,7 @@ async function loadSessions(){
   data.forEach(s=>{
     const el=document.createElement("div");el.className="session-item"+(s.id===activeSession?" active":"");el.dataset.sid=s.id;
     el.innerHTML=`<div class="session-cname">${s.customer_name} <span class="new-badge" style="display:none;width:8px;height:8px;border-radius:50%;background:#e24b4a;display:none;margin-left:4px;"></span></div>
-      <div class="session-preview">${s.last_message||"No messages yet"}</div>
+      <div class="session-preview">${s.last_message&&s.last_message.startsWith("[[img]]")?"📷 Photo":(s.last_message||"No messages yet")}</div>
       <div style="font-size:10px;color:#b09080;">${s.phone||""} · ${s.last_time||s.created_at}</div>`;
     el.onclick=()=>openSession(s.id,s.customer_name,s.phone);list.appendChild(el);
   });
@@ -387,7 +388,9 @@ async function openSession(sid,name,phone){
 function appendMsg(sender,message,time){
   const msgs=document.getElementById("adminMsgs");if(!msgs)return;
   const div=document.createElement("div");div.className="msg "+sender;
-  div.innerHTML=message.replace(/\n/g,"<br>")+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
+  const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,"<br>");
+  div.innerHTML=body+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
   msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
 }
 function adminSend(){

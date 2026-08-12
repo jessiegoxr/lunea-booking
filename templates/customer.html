@@ -87,6 +87,9 @@ textarea { resize:vertical; min-height:80px; }
 .msg.customer { background:var(--rose); color:#fff; border-radius:18px 18px 4px 18px; align-self:flex-end; }
 .msg.admin { background:var(--light-rose); color:var(--dark); border-radius:18px 18px 18px 4px; align-self:flex-start; }
 .msg-time { font-size:10px; opacity:.6; margin-top:3px; }
+.msg-img { display:block; max-width:100%; border-radius:12px; cursor:pointer; }
+.chat-attach { width:38px; height:38px; flex:0 0 auto; border-radius:50%; background:var(--light-rose); color:var(--dark); border:none; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.chat-attach:hover { background:var(--border); }
 .chat-input { padding:12px; border-top:1px solid var(--border); display:flex; gap:8px; }
 .chat-input input { flex:1; border-radius:20px; }
 .chat-send { padding:10px 18px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px; }
@@ -258,6 +261,8 @@ async function submitAuth(){
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input">
+      <button class="chat-attach" type="button" title="Send a photo" onclick="document.getElementById('chatImageInput').click()">📷</button>
+      <input type="file" id="chatImageInput" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="if(this.files[0])sendChatImage(this.files[0]);this.value='';">
       <input type="text" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
       <button class="chat-send" onclick="sendMsg()">Send</button>
     </div>
@@ -386,13 +391,25 @@ async function loadHistory(){
 }
 function appendMsg(sender,message,time){
   const div=document.createElement('div');div.className='msg '+sender;
-  div.innerHTML=message.replace(/\n/g,'<br>')+`<div class="msg-time">${time?time.split(' ')[1]||time:''}</div>`;
+  const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,'<br>');
+  div.innerHTML=body+`<div class="msg-time">${time?time.split(' ')[1]||time:''}</div>`;
   const c=document.getElementById('chatMessages');c.appendChild(div);c.scrollTop=c.scrollHeight;
 }
 function sendMsg(){
   const input=document.getElementById('chatInput');const msg=input.value.trim();
   if(!msg||!socket||!sessionId)return;
   socket.emit('send_message',{session_id:sessionId,sender:'customer',message:msg});input.value='';
+}
+async function sendChatImage(file){
+  if(!socket||!sessionId){alert('Please start the chat first.');return;}
+  const fd=new FormData();fd.append('file',file);
+  try{
+    const res=await fetch('/api/chat/upload-image',{method:'POST',body:fd});
+    const json=await res.json();
+    if(json.success)socket.emit('send_message',{session_id:sessionId,sender:'customer',message:'[[img]]'+json.image_url});
+    else alert(json.error||'Upload failed. Please try again.');
+  }catch(e){alert('Upload failed. Please try again.');}
 }
 window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}refreshAvailabilityPanel();});
 </script>
