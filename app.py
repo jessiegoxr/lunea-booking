@@ -242,6 +242,19 @@ def get_messages(session_id):
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/chat/upload-image', methods=['POST'])
+def upload_chat_image():
+    if 'file' not in request.files:
+        return jsonify({'success':False,'error':'No file uploaded.'}), 400
+    file = request.files['file']
+    if not file or not allowed_file(file.filename):
+        return jsonify({'success':False,'error':'Please upload JPG/PNG/WEBP image.'}), 400
+    original_name = secure_filename(file.filename)
+    filename = f"{uuid.uuid4().hex}_{original_name}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    return jsonify({'success':True,'image_url':f'/uploads/{filename}'})
+
 @socketio.on('join')
 def on_join(data):
     sid = data.get('session_id')

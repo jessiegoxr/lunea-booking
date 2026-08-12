@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUNÉA Nail Studio – Penang</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+:root {
+  --cream: #faf6f1; --rose: #c4a898; --dark: #2c2320; --mid: #8a6f65;
+  --light-rose: #f3ece6; --border: #ddd0c8; --white: #fff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--cream); color: var(--dark); }
+nav { background: var(--white); border-bottom: 1px solid var(--border); position: sticky; top:0; z-index:100; }
+.nav-inner { max-width:700px; margin:0 auto; padding:0 20px; display:flex; align-items:center; justify-content:space-between; height:56px; }
+.nav-brand { font-family: Georgia, serif; font-size:22px; letter-spacing:6px; color:var(--dark); }
+.nav-tabs { display:flex; gap:4px; }
+.nav-tab { padding:6px 14px; border:none; background:none; font-size:13px; letter-spacing:1px; color:var(--mid); cursor:pointer; border-radius:20px; transition:.2s; }
+.nav-tab.active { background:var(--rose); color:#fff; }
+.chat-badge { display:none; background:#e24b4a; color:#fff; border-radius:50%; width:16px; height:16px; font-size:10px; line-height:16px; text-align:center; margin-left:4px; }
+.chat-badge.show { display:inline-block; }
+.section { display:none; max-width:700px; margin:0 auto; padding:28px 20px 60px; }
+.section.active { display:block; }
+.page-header { text-align:center; margin-bottom:28px; }
+.page-header h1 { font-family:Georgia,serif; font-size:28px; letter-spacing:8px; color:var(--dark); margin-bottom:4px; }
+.page-header p { font-size:12px; letter-spacing:3px; color:var(--rose); }
+.divider { display:flex; align-items:center; gap:10px; margin:20px 0; }
+.divider-line { flex:1; height:.5px; background:var(--border); }
+.divider-text { font-size:11px; letter-spacing:3px; color:var(--mid); white-space:nowrap; }
+.form-group { margin-bottom:16px; }
+label { display:block; font-size:12px; letter-spacing:1px; color:var(--mid); margin-bottom:6px; }
+input, select, textarea { width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:8px; font-size:14px; background:var(--white); color:var(--dark); outline:none; transition:.2s; }
+input:focus, select:focus, textarea:focus { border-color:var(--rose); }
+textarea { resize:vertical; min-height:80px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.btn { width:100%; padding:13px; border:none; border-radius:8px; font-size:14px; letter-spacing:2px; cursor:pointer; transition:.2s; }
+.btn-primary { background:var(--rose); color:#fff; }
+.btn-primary:hover { background:#b09080; }
+.btn-primary:disabled { opacity:.6; cursor:not-allowed; }
+.alert { padding:12px 16px; border-radius:8px; font-size:13px; margin-top:16px; display:none; }
+.alert.success { background:#eaf3de; color:#3b6d11; border:1px solid #c0dd97; }
+.alert.error { background:#fcebeb; color:#a32d2d; border:1px solid #f7c1c1; }
+.upload-area { border:2px dashed var(--border); border-radius:12px; padding:40px 20px; text-align:center; cursor:pointer; transition:.2s; position:relative; }
+.upload-area:hover, .upload-area.dragover { border-color:var(--rose); background:var(--light-rose); }
+.upload-area input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.upload-icon { font-size:40px; margin-bottom:10px; }
+.upload-area p { font-size:13px; color:var(--mid); }
+.upload-area small { font-size:11px; color:#b09080; }
+.result-card { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; margin-top:20px; display:none; }
+.result-card img { width:100%; border-radius:8px; margin-bottom:16px; max-height:300px; object-fit:cover; }
+.result-price { font-size:22px; font-family:Georgia,serif; color:var(--rose); margin-bottom:8px; }
+.result-analysis { font-size:13px; color:var(--mid); line-height:1.7; white-space:pre-wrap; }
+.tag { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; letter-spacing:1px; margin-bottom:12px; }
+.tag-ai { background:var(--light-rose); color:var(--mid); border:1px solid var(--border); }
+.spinner { display:none; text-align:center; padding:20px; }
+.spinner-ring { width:36px; height:36px; border:3px solid var(--border); border-top-color:var(--rose); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 10px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.price-notify {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+  background:var(--dark); color:#fff; border-radius:12px; padding:16px 22px;
+  font-size:13px; box-shadow:0 4px 20px rgba(0,0,0,.25); z-index:999;
+  display:none; max-width:320px; width:90%; text-align:center;
+}
+.price-notify strong { color:var(--rose); font-family:Georgia,serif; font-size:16px; display:block; margin:6px 0; }
+.price-notify-close { margin-top:10px; padding:6px 16px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:12px; }
+.cp-day{border-radius:6px;cursor:pointer;font-size:12px;padding:5px 2px;display:flex;flex-direction:column;align-items:center;min-height:30px;justify-content:center;}
+.cp-day:hover{background:var(--light-rose);}
+.cp-day.cp-empty{cursor:default;pointer-events:none;}
+.cp-day.cp-past{opacity:.35;cursor:default;pointer-events:none;}
+.cp-day.cp-avail{cursor:pointer;}
+.cp-day .cpdn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.cp-day.cp-today .cpdn{border:2px solid var(--rose);}
+.cp-day.cp-sel .cpdn{background:var(--rose);color:#fff;}
+.cp-day.cp-avail .cpdn{background:#edfaed;color:#2a7a2a;font-weight:600;}
+.cp-day.cp-sel .cpdn{background:var(--rose)!important;color:#fff!important;}
+.cp-dot{width:5px;height:5px;border-radius:50%;background:#63c95e;margin-top:2px;}
+.slot-chip{padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid #63c95e;color:#2a7a2a;background:#edfaed;transition:.15s;}
+.slot-chip:hover,.slot-chip.sel{background:var(--rose);border-color:var(--rose);color:#fff;}
+.chat-start { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+.chat-window { background:var(--white); border:1px solid var(--border); border-radius:12px; display:none; flex-direction:column; height:460px; }
+.chat-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.chat-dot { width:8px; height:8px; border-radius:50%; background:#63c95e; }
+.chat-name { font-size:13px; font-weight:600; }
+.chat-messages { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
+.msg { max-width:75%; padding:10px 14px; border-radius:18px; font-size:13px; line-height:1.5; }
+.msg.customer { background:var(--rose); color:#fff; border-radius:18px 18px 4px 18px; align-self:flex-end; }
+.msg.admin { background:var(--light-rose); color:var(--dark); border-radius:18px 18px 18px 4px; align-self:flex-start; }
+.msg-time { font-size:10px; opacity:.6; margin-top:3px; }
+.msg-img { display:block; max-width:100%; border-radius:12px; cursor:pointer; }
+.chat-attach { width:38px; height:38px; flex:0 0 auto; border-radius:50%; background:var(--light-rose); color:var(--dark); border:none; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.chat-attach:hover { background:var(--border); }
+.chat-input { padding:12px; border-top:1px solid var(--border); display:flex; gap:8px; }
+.chat-input input { flex:1; border-radius:20px; }
+.chat-send { padding:10px 18px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px; }
+.chat-send:hover { background:#b09080; }
+
+.auth-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--cream);}
+.auth-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:90vw;}
+.auth-card h1{font-family:Georgia,serif;font-size:26px;letter-spacing:7px;text-align:center;margin-bottom:4px;}
+.auth-card .sub{font-size:11px;letter-spacing:3px;color:var(--rose);text-align:center;margin-bottom:24px;}
+.auth-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;}
+.auth-toggle button{flex:1;padding:9px;border:none;background:none;font-size:13px;cursor:pointer;color:var(--mid);}
+.auth-toggle button.active{background:var(--rose);color:#fff;}
+.auth-err{background:#fcebeb;color:#a32d2d;border:1px solid #f7c1c1;border-radius:6px;padding:9px 12px;font-size:12px;margin-bottom:12px;display:none;}
+.customer-name{font-size:12px;color:var(--mid);letter-spacing:1px;}
+.logout-btn{padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-size:11px;background:none;cursor:pointer;color:var(--mid);}
+.logout-btn:hover{background:var(--rose);color:#fff;border-color:var(--rose);}
+</style>
+</head>
+<body>
+{% if not customer %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>LUNÉA</h1>
+    <p class="sub">NAIL STUDIO · PENANG</p>
+    <div class="auth-toggle">
+      <button class="active" id="tabLogin" onclick="switchAuth('login')">Login 登入</button>
+      <button id="tabSignup" onclick="switchAuth('signup')">Sign Up 注册</button>
+    </div>
+    <div class="auth-err" id="authErr"></div>
+    <div id="signupFields">
+      <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="authName" placeholder="Your name"></div>
+      <div class="form-group"><label>PHONE 电话</label><input type="tel" id="authPhone" placeholder="01X-XXXXXXX"></div>
+    </div>
+    <div class="form-group"><label>EMAIL *</label><input type="email" id="authEmail" placeholder="your@email.com"></div>
+    <div class="form-group"><label>PASSWORD 密码 *</label><input type="password" id="authPassword" placeholder="Min 6 characters"></div>
+    <button class="btn btn-primary" id="authBtn" onclick="submitAuth()" style="margin-top:4px;">LOGIN 登入</button>
+    <p style="text-align:center;font-size:12px;color:var(--mid);margin-top:14px;" id="authSwitch">
+      No account? <a href="#" onclick="switchAuth('signup');return false;" style="color:var(--rose);">Sign up here</a>
+    </p>
+  </div>
+</div>
+<script>
+let authMode = 'login';
+function switchAuth(mode){
+  authMode = mode;
+  document.getElementById('signupFields').style.display = mode==='signup'?'block':'none';
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authBtn').textContent = mode==='login'?'LOGIN 登入':'SIGN UP 注册';
+  document.getElementById('authSwitch').innerHTML = mode==='login'?
+    "No account? <a href=\"#\" onclick=\"switchAuth('signup');return false;\" style=\"color:var(--rose);\">Sign up here</a>":
+    "Already have account? <a href=\"#\" onclick=\"switchAuth('login');return false;\" style=\"color:var(--rose);\">Login</a>";
+  document.getElementById('authErr').style.display='none';
+}
+switchAuth('login');
+async function submitAuth(){
+  const btn=document.getElementById('authBtn');
+  const email=document.getElementById('authEmail').value.trim();
+  const password=document.getElementById('authPassword').value;
+  const err=document.getElementById('authErr');
+  err.style.display='none'; btn.disabled=true; btn.textContent='...';
+  const body = authMode==='login' ? {email,password} :
+    {email,password,name:document.getElementById('authName').value.trim(),phone:document.getElementById('authPhone').value.trim()};
+  const url = authMode==='login' ? '/api/customer/login' : '/api/signup';
+  const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const json = await res.json();
+  btn.disabled=false; btn.textContent=authMode==='login'?'LOGIN 登入':'SIGN UP 注册';
+  if(json.success) location.reload();
+  else { err.textContent=json.error; err.style.display='block'; }
+}
+</script>
+{% else %}
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand">LUNÉA</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="showSection('book')">预约</button>
+      <button class="nav-tab" onclick="showSection('availability')">可预约时间</button>
+      <button class="nav-tab" onclick="showSection('design')">设计报价</button>
+      <button class="nav-tab" onclick="showSection('chat')">Chat <span class="chat-badge" id="chatBadge">1</span></button>
+    </div>
+  </div>
+</nav>
+<div class="section active" id="section-book">
+  <div class="page-header"><h1>LUNÉA</h1><p>NAIL STUDIO · PENANG</p></div>
+  <div class="divider"><div class="divider-line"></div><div class="divider-text">预约美甲 · Book Appointment</div><div class="divider-line"></div></div>
+  <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="bookName" placeholder="Your name" value="{{ customer.name }}"></div>
+  <div class="form-group"><label>PHONE 电话 *</label><input type="tel" id="bookPhone" placeholder="01X-XXXXXXX" value="{{ customer.phone }}"></div>
+  <div class="form-group">
+    <label>SERVICE 服务 *</label>
+    <select id="bookService">
+      <option value="">-- Select service --</option>
+      <optgroup label="本甲 Manicure">
+        <option value="本甲 · 单色/跳色/猫眼 RM50">本甲 · 单色/跳色/猫眼 — RM50</option>
+        <option value="本甲 · 简单款式 RM65">本甲 · 简单款式 — RM65</option>
+        <option value="本甲 · 复杂款式 RM85">本甲 · 复杂款式 — RM85</option>
+      </optgroup>
+      <optgroup label="延长 Nail Extension">
+        <option value="延长 · 单色/跳色/猫眼 RM95">延长 · 单色/跳色/猫眼 — RM95</option>
+        <option value="延长 · 简单款式 RM115">延长 · 简单款式 — RM115</option>
+        <option value="延长 · 复杂款式 RM130">延长 · 复杂款式 — RM130</option>
+      </optgroup>
+      <optgroup label="卸甲 Removal">
+        <option value="卸本甲 RM10">卸本甲 — RM10</option>
+        <option value="卸甲片 RM15">卸甲片 — RM15</option>
+        <option value="纯卸(含前置) RM20-25">纯卸（含前置处理）— RM20–25</option>
+      </optgroup>
+    </select>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>DATE 日期 *</label><input type="date" id="bookDate"></div>
+    <div class="form-group">
+      <label>TIME 时间 *</label>
+      <select id="bookTime"><option value="">-- Select date first --</option></select>
+    </div>
+  </div>
+  <div class="form-group" id="bookAvailabilityNotice" style="display:none;"><label>Available slots</label><div id="bookAvailabilityText" style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;color:var(--mid);"></div></div>
+  <div class="form-group"><label>NOTES 备注</label><textarea id="bookNotes" placeholder="Any special requests..."></textarea></div>
+  <button class="btn btn-primary" onclick="submitBooking()">CONFIRM APPOINTMENT 确认预约</button>
+  <div class="alert success" id="bookSuccess">✓ Appointment request sent! We'll confirm via WhatsApp soon.</div>
+  <div class="alert error" id="bookError"></div>
+</div>
+<div class="section" id="section-availability">
+  <div class="page-header"><h1>LUNÉA</h1><p>AVAILABLE SLOTS · 可预约时段</p></div>
+  <div class="divider"><div class="divider-line"></div><div class="divider-text">Browse available reservation slots for the next two weeks</div><div class="divider-line"></div></div>
+  <div id="availabilitySummary" class="result-card" style="display:block;padding:20px;">
+    <div style="font-size:14px;font-weight:600;color:var(--dark);margin-bottom:8px;">Upcoming availability</div>
+    <div id="availabilityInfo" style="font-size:13px;color:var(--mid);line-height:1.6;">Loading available dates...</div>
+  </div>
+  <div id="availabilityList" class="design-grid" style="margin-top:16px;"></div>
+  <div class="alert error" id="availabilityError"></div>
+</div>
+<div class="section" id="section-design">
+  <div class="page-header"><h1>LUNÉA</h1><p>DESIGN PRICE ESTIMATE · 设计估价</p></div>
+  <div class="divider"><div class="divider-line"></div><div class="divider-text">上传设计图 · Upload Design</div><div class="divider-line"></div></div>
+  <div class="form-row" style="margin-bottom:16px;">
+    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="designName" placeholder="Your name" value="{{ customer.name }}"></div>
+    <div class="form-group"><label>PHONE 电话</label><input type="tel" id="designPhone" placeholder="01X-XXXXXXX" value="{{ customer.phone }}"></div>
+  </div>
+  <div class="upload-area" id="uploadArea">
+    <input type="file" id="designFile" accept="image/*" onchange="previewFile(this)">
+    <div class="upload-icon">🌙</div>
+    <p>Click or drag & drop your nail design photo</p>
+    <p>点击或拖拽上传设计图</p>
+    <small>JPG / PNG / WEBP · Max 10MB</small>
+  </div>
+  <div class="spinner" id="uploadSpinner"><div class="spinner-ring"></div><p style="font-size:13px;color:var(--mid);">AI analysing... 正在分析...</p></div>
+  <div class="result-card" id="resultCard">
+    <img id="resultImage" src="" alt="Uploaded design">
+    <span class="tag tag-ai">✦ AI Estimate · 智能估价</span>
+    <div class="result-price" id="resultPrice"></div>
+    <div class="result-analysis" id="resultAnalysis"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--mid);">✦ Final price confirmed by nail technician via Live Chat</div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="showSection('chat')">Chat with us to confirm →</button>
+  </div>
+  <div class="alert error" id="uploadError"></div>
+</div>
+<div class="section" id="section-chat">
+  <div class="page-header"><h1>LUNÉA</h1><p>LIVE CHAT · 在线咨询</p></div>
+  <div class="chat-start" id="chatStart">
+    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="chatName" placeholder="Your name" value="{{ customer.name }}"></div>
+    <div class="form-group"><label>PHONE 电话</label><input type="tel" id="chatPhone" placeholder="01X-XXXXXXX"></div>
+    <button class="btn btn-primary" onclick="startChat()">START CHAT 开始聊天</button>
+  </div>
+  <div class="chat-window" id="chatWindow">
+    <div class="chat-header">
+      <div class="chat-dot"></div>
+      <div><div class="chat-name">LUNÉA Nail Studio</div><div style="font-size:11px;color:var(--mid);">Penang · Usually replies within minutes</div></div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input">
+      <button class="chat-attach" type="button" title="Send a photo" onclick="document.getElementById('chatImageInput').click()">📷</button>
+      <input type="file" id="chatImageInput" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="if(this.files[0])sendChatImage(this.files[0]);this.value='';">
+      <input type="text" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="chat-send" onclick="sendMsg()">Send</button>
+    </div>
+  </div>
+</div>
+<div class="price-notify" id="priceNotify">
+  ✦ LUNÉA has reviewed your design!
+  <strong id="notifyPrice"></strong>
+  <div id="notifyNote" style="font-size:12px;color:#ddd;margin-bottom:4px;"></div>
+  <button class="price-notify-close" onclick="document.getElementById('priceNotify').style.display='none'">OK, Got it!</button>
+</div>
+<script>
+async function customerLogout(){
+  await fetch('/api/customer/logout',{method:'POST'});
+  location.reload();
+}
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('section-'+name).classList.add('active');
+  const idx={book:0,availability:1,design:2,chat:3}[name];
+  document.querySelectorAll('.nav-tab')[idx].classList.add('active');
+  if(name==='chat'){document.getElementById('chatBadge').classList.remove('show');}
+}
+const availabilityCache = {};
+
+function formatDateLabel(date){
+  return new Date(date).toLocaleDateString('zh-Hans', { month:'short', day:'numeric', weekday:'short' });
+}
+
+async function loadAvailability(startDate, endDate){
+  const url = `/api/availability?start=${startDate}&end=${endDate}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  const grouped = {};
+  data.forEach(slot => {
+    if (!grouped[slot.date]) grouped[slot.date] = [];
+    if (slot.available === 1) grouped[slot.date].push(slot.time);
+  });
+  return grouped;
+}
+
+document.getElementById('bookDate').min = new Date().toISOString().split('T')[0];
+document.getElementById('bookDate').addEventListener('change', () => loadTimesForDate(document.getElementById('bookDate').value));
+
+async function loadTimesForDate(date){
+  if (!date) return;
+  const times = availabilityCache[date] || [];
+  const timeSelect = document.getElementById('bookTime');
+  timeSelect.innerHTML = '<option value="">-- Select --</option>';
+  if (times.length === 0) {
+    timeSelect.innerHTML = '<option value="">No times available</option>';
+    document.getElementById('bookAvailabilityNotice').style.display = 'block';
+    document.getElementById('bookAvailabilityText').textContent = '该日期暂无可预约时段，请选择其他日期。';
+    return;
+  }
+  times.forEach(t => timeSelect.insertAdjacentHTML('beforeend', `<option>${t}</option>`));
+  document.getElementById('bookAvailabilityNotice').style.display = 'block';
+  document.getElementById('bookAvailabilityText').textContent = `可选时段：${times.join('，')}`;
+}
+
+async function refreshAvailabilityPanel(){
+  const today = new Date().toISOString().split('T')[0];
+  const end = new Date(new Date().setDate(new Date().getDate() + 14)).toISOString().split('T')[0];
+  const grouped = await loadAvailability(today, end);
+  Object.assign(availabilityCache, grouped);
+  const days = Object.keys(grouped).sort();
+  const summary = days.length ? `${days.length} 个可预约日期，从 ${formatDateLabel(days[0])} 到 ${formatDateLabel(days[days.length-1])}` : '当前没有可预约日期。请稍后再试。';
+  document.getElementById('availabilityInfo').textContent = summary;
+  const list = document.getElementById('availabilityList');
+  list.innerHTML = days.slice(0, 8).map(date => {
+    const times = grouped[date].length;
+    return `<div class="design-card"><div class="design-card-body"><div class="design-card-name">${formatDateLabel(date)}</div><div style="font-size:12px;color:var(--mid);">${times} 可预约时段</div><div style="margin-top:10px;font-size:12px;color:var(--mid);">${grouped[date].slice(0,3).join('，')}${grouped[date].length>3?' ...':''}</div></div></div>`;
+  }).join('') || '<p style="color:var(--mid);font-size:13px;">No available reservation dates were found.</p>';
+}
+
+async function submitBooking(){
+  const btn=document.querySelector('#section-book .btn-primary');
+  const data={name:document.getElementById('bookName').value.trim(),phone:document.getElementById('bookPhone').value.trim(),service:document.getElementById('bookService').value,date:document.getElementById('bookDate').value,time:document.getElementById('bookTime').value,notes:document.getElementById('bookNotes').value.trim()};
+  document.getElementById('bookSuccess').style.display='none';document.getElementById('bookError').style.display='none';
+  btn.disabled=true;btn.textContent='Sending...';
+  const res=await fetch('/api/book',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const json=await res.json();btn.disabled=false;btn.textContent='CONFIRM APPOINTMENT 确认预约';
+  if(json.success){document.getElementById('bookSuccess').style.display='block';['bookName','bookPhone','bookNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('bookService').value='';document.getElementById('bookDate').value='';document.getElementById('bookTime').value='';}
+  else{const el=document.getElementById('bookError');el.textContent=json.error;el.style.display='block';}
+}
+const uploadArea=document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover',e=>{e.preventDefault();uploadArea.classList.add('dragover');});
+uploadArea.addEventListener('dragleave',()=>uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop',e=>{e.preventDefault();uploadArea.classList.remove('dragover');const f=e.dataTransfer.files[0];if(f)uploadDesign(f);});
+function previewFile(input){if(input.files[0])uploadDesign(input.files[0]);}
+async function uploadDesign(file){
+  const name=document.getElementById('designName').value.trim();
+  if(!name){showUploadError('Please enter your name first.');return;}
+  document.getElementById('uploadError').style.display='none';document.getElementById('uploadSpinner').style.display='block';document.getElementById('resultCard').style.display='none';
+  const fd=new FormData();fd.append('file',file);fd.append('name',name);fd.append('phone',document.getElementById('designPhone').value.trim());
+  try{
+    const res=await fetch('/api/upload-design',{method:'POST',body:fd});const json=await res.json();
+    document.getElementById('uploadSpinner').style.display='none';
+    if(json.success){document.getElementById('resultImage').src=json.image_url;document.getElementById('resultPrice').textContent=json.price_estimate;document.getElementById('resultAnalysis').textContent=json.analysis;document.getElementById('resultCard').style.display='block';document.getElementById('chatName').value=name;document.getElementById('chatPhone').value=document.getElementById('designPhone').value.trim();}
+    else showUploadError(json.error);
+  }catch(e){document.getElementById('uploadSpinner').style.display='none';showUploadError('Upload failed. Please try again.');}
+}
+function showUploadError(msg){const el=document.getElementById('uploadError');el.textContent=msg;el.style.display='block';}
+let socket,sessionId,chatStarted=false;
+function initSocket(){
+  socket=io();
+  socket.on('receive_message',data=>{if(data.session_id===sessionId)appendMsg(data.sender,data.message,data.timestamp);});
+  socket.on('connect',()=>{if(chatStarted&&sessionId)socket.emit('join',{session_id:sessionId,name:document.getElementById('chatName').value,phone:document.getElementById('chatPhone').value});});
+}
+function startChat(){
+  const name=document.getElementById('chatName').value.trim();
+  if(!name){alert('Please enter your name.');return;}
+  if(!socket)initSocket();
+  sessionId=localStorage.getItem('lunea_session')||('cust_'+Math.random().toString(36).substr(2,9));
+  localStorage.setItem('lunea_session',sessionId);
+  socket.emit('join',{session_id:sessionId,name,phone:document.getElementById('chatPhone').value.trim()});
+  chatStarted=true;
+  document.getElementById('chatStart').style.display='none';document.getElementById('chatWindow').style.display='flex';
+  loadHistory();
+  appendMsg('admin','👋 Hi! Welcome to LUNÉA Nail Studio. How can we help you?\n您好！欢迎来到 LUNÉA 美甲工作室，有什么可以帮您？',new Date().toLocaleTimeString());
+}
+async function loadHistory(){
+  const res=await fetch('/api/chat/messages/'+sessionId);const msgs=await res.json();
+  document.getElementById('chatMessages').innerHTML='';msgs.forEach(m=>appendMsg(m.sender,m.message,m.timestamp));
+}
+function appendMsg(sender,message,time){
+  const div=document.createElement('div');div.className='msg '+sender;
+  const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,'<br>');
+  div.innerHTML=body+`<div class="msg-time">${time?time.split(' ')[1]||time:''}</div>`;
+  const c=document.getElementById('chatMessages');c.appendChild(div);c.scrollTop=c.scrollHeight;
+}
+function sendMsg(){
+  const input=document.getElementById('chatInput');const msg=input.value.trim();
+  if(!msg||!socket||!sessionId)return;
+  socket.emit('send_message',{session_id:sessionId,sender:'customer',message:msg});input.value='';
+}
+async function sendChatImage(file){
+  if(!socket||!sessionId){alert('Please start the chat first.');return;}
+  const fd=new FormData();fd.append('file',file);
+  try{
+    const res=await fetch('/api/chat/upload-image',{method:'POST',body:fd});
+    const json=await res.json();
+    if(json.success)socket.emit('send_message',{session_id:sessionId,sender:'customer',message:'[[img]]'+json.image_url});
+    else alert(json.error||'Upload failed. Please try again.');
+  }catch(e){alert('Upload failed. Please try again.');}
+}
+window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}refreshAvailabilityPanel();});
+</script>
+{% endif %}
+</body>
+</html>

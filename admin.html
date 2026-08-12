@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUNÉA Admin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+:root{--cream:#faf6f1;--rose:#c4a898;--dark:#2c2320;--mid:#8a6f65;--light:#f3ece6;--border:#ddd0c8;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:"Segoe UI",sans-serif;background:#f0ebe4;color:var(--dark);}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.login-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:40px;width:340px;text-align:center;}
+.login-card h1{font-family:Georgia,serif;font-size:28px;letter-spacing:8px;margin-bottom:4px;}
+.login-card p{font-size:11px;letter-spacing:3px;color:var(--rose);margin-bottom:28px;}
+.login-card input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:12px;outline:none;}
+.login-card input:focus{border-color:var(--rose);}
+.login-card button{width:100%;padding:12px;background:var(--rose);color:#fff;border:none;border-radius:8px;font-size:13px;letter-spacing:2px;cursor:pointer;}
+.login-err{color:#a32d2d;font-size:12px;margin-top:8px;display:none;}
+.admin-layout{display:flex;height:100vh;}
+.sidebar{width:190px;background:var(--dark);display:flex;flex-direction:column;padding:24px 0;flex-shrink:0;}
+.sidebar-brand{font-family:Georgia,serif;font-size:18px;letter-spacing:6px;color:#fff;text-align:center;padding:0 16px 24px;border-bottom:1px solid #3a2e2b;margin-bottom:16px;}
+.sidebar-brand small{display:block;font-family:"Segoe UI",sans-serif;font-size:9px;letter-spacing:3px;color:var(--rose);margin-top:2px;}
+.nav-item{padding:11px 18px;color:#c4a898;font-size:12px;cursor:pointer;border-left:3px solid transparent;transition:.2s;display:flex;align-items:center;gap:8px;}
+.nav-item:hover{background:rgba(255,255,255,.05);}
+.nav-item.active{color:#fff;border-left-color:var(--rose);background:rgba(196,168,152,.1);}
+.notif-dot{width:7px;height:7px;border-radius:50%;background:#e24b4a;margin-left:auto;display:none;}
+.notif-dot.show{display:block;}
+.sidebar-logout{margin-top:auto;padding:11px 18px;color:#8a6f65;font-size:12px;cursor:pointer;}
+.sidebar-logout:hover{color:#fff;}
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.topbar{background:#fff;border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;}
+.topbar h2{font-size:15px;font-weight:500;}
+.content{flex:1;overflow-y:auto;padding:20px;}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;}
+.stat-num{font-size:30px;font-family:Georgia,serif;color:var(--rose);}
+.stat-label{font-size:10px;letter-spacing:2px;color:var(--mid);margin-top:4px;}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;}
+th{background:var(--light);padding:11px 14px;font-size:10px;letter-spacing:2px;color:var(--mid);text-align:left;}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;cursor:pointer;}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;}
+.design-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.design-card img{width:100%;height:170px;object-fit:cover;}
+.design-card-body{padding:13px;}
+.design-card-name{font-size:13px;font-weight:600;margin-bottom:2px;}
+.design-card-phone{font-size:11px;color:var(--mid);margin-bottom:8px;}
+.ai-box{background:var(--light);border-radius:8px;padding:9px;font-size:11px;color:var(--mid);line-height:1.6;white-space:pre-wrap;max-height:110px;overflow-y:auto;margin-bottom:9px;}
+.admin-review input{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:5px;}
+.admin-review button{width:100%;padding:6px;background:var(--rose);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;}
+.chat-layout{display:flex;height:calc(100vh - 130px);}
+.session-list{width:240px;background:#fff;border:1px solid var(--border);border-radius:12px 0 0 12px;overflow-y:auto;flex-shrink:0;}
+.session-item{padding:13px 15px;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s;}
+.session-item:hover{background:var(--light);}
+.session-item.active{background:var(--light);border-left:3px solid var(--rose);}
+.session-cname{font-size:13px;font-weight:600;}
+.session-preview{font-size:11px;color:var(--mid);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chat-panel{flex:1;display:flex;flex-direction:column;background:#fff;border:1px solid var(--border);border-left:none;border-radius:0 12px 12px 0;}
+.chat-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:13px;}
+.chat-panel-header{padding:13px 17px;border-bottom:1px solid var(--border);}
+.chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;}
+.msg{max-width:72%;padding:9px 13px;border-radius:18px;font-size:13px;line-height:1.5;}
+.msg.customer{background:var(--light);color:var(--dark);border-radius:18px 18px 18px 4px;align-self:flex-start;}
+.msg.admin{background:var(--rose);color:#fff;border-radius:18px 18px 4px 18px;align-self:flex-end;}
+.msg-time{font-size:10px;opacity:.6;margin-top:3px;}
+.msg-img{display:block;max-width:100%;border-radius:12px;cursor:pointer;}
+.chat-send-area{padding:11px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.chat-send-area input{flex:1;padding:9px 13px;border:1px solid var(--border);border-radius:20px;font-size:13px;outline:none;}
+.chat-send-area input:focus{border-color:var(--rose);}
+.chat-send-area button{padding:9px 17px;background:var(--rose);color:#fff;border:none;border-radius:20px;cursor:pointer;font-size:13px;}
+/* ── Calendar ── */
+.cal-wrap{display:grid;grid-template-columns:290px 1fr;gap:18px;height:calc(100vh - 150px);}
+.cal-left{display:flex;flex-direction:column;gap:14px;}
+.mini-cal{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;}
+.mini-cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.mini-cal-hdr button{border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);padding:2px 8px;}
+.mini-cal-hdr span{font-family:Georgia,serif;font-size:13px;letter-spacing:2px;}
+.mini-cal-days{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;}
+.mini-cal-days span{font-size:9px;color:var(--mid);font-weight:700;padding:3px 0;}
+.mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px;}
+.mday{padding:3px 1px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;min-height:32px;justify-content:center;}
+.mday:hover{background:var(--light);}
+.mday.empty{cursor:default;pointer-events:none;}
+.mday .dn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.mday.is-today .dn{background:var(--rose);color:#fff;}
+.mday.is-sel{background:var(--light);}
+.mdot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
+.mdot-a{background:var(--rose);}
+.mdot-s{background:#63c95e;}
+.upcoming{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;flex:1;overflow-y:auto;}
+.ucard{padding:9px 10px 9px 12px;border-radius:0 8px 8px 0;margin-bottom:8px;cursor:pointer;}
+.cal-right{background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;}
+.cal-day-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cal-day-hdr h3{font-family:Georgia,serif;font-size:15px;letter-spacing:1px;}
+.open-all-btn{padding:7px 15px;background:var(--rose);color:#fff;border:none;border-radius:20px;font-size:11px;cursor:pointer;letter-spacing:1px;}
+.timeline{flex:1;overflow-y:auto;padding:14px 18px;}
+.trow{display:flex;align-items:center;gap:11px;margin-bottom:7px;}
+.ttime{width:68px;font-size:11px;color:var(--mid);text-align:right;flex-shrink:0;}
+.tblock{flex:1;border-radius:8px;padding:8px 13px;transition:.15s;}
+.tb-open{background:#edfaed;border:1.5px solid #63c95e;display:flex;align-items:center;justify-content:space-between;}
+.tb-empty{border:1.5px dashed var(--border);cursor:pointer;}
+.tb-empty:hover{border-color:var(--rose);background:var(--light);}
+.tb-appt-pending{background:#faeeda;border-left:4px solid #f0a500;}
+.tb-appt-confirmed{background:#eaf3de;border-left:4px solid #63c95e;}
+.tb-appt-done{background:#e6f1fb;border-left:4px solid #4a9edd;}
+.tb-appt-cancelled{background:#fcebeb;border-left:4px solid #e24b4a;}
+</style>
+</head>
+<body>
+{% if not logged_in %}
+<div class="login-wrap">
+  <div class="login-card">
+    <h1>LUNÉA</h1><p>ADMIN DASHBOARD</p>
+    <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">LOGIN</button>
+    <div class="login-err" id="loginErr">Wrong password</div>
+  </div>
+</div>
+<script>
+async function login(){
+  const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pwInput').value})});
+  const j=await r.json();if(j.success)location.reload();else document.getElementById('loginErr').style.display='block';
+}
+</script>
+{% else %}
+<div class="admin-layout">
+  <div class="sidebar">
+    <div class="sidebar-brand">LUNÉA<small>ADMIN</small></div>
+    <div class="nav-item active" onclick="showTab('appointments')">📋 Reservations <span class="notif-dot" id="apptDot"></span></div>
+    <div class="nav-item" onclick="showTab('calendar')">📅 Calendar</div>
+    <div class="nav-item" onclick="showTab('designs')">🖼 Design Uploads <span class="notif-dot" id="designDot"></span></div>
+    <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
+    <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
+  </div>
+  <div class="main">
+    <div class="topbar"><h2 id="tabTitle">Reservations · 预约管理</h2><span style="font-size:11px;color:var(--mid);">LUNÉA Nail Studio, Penang</span></div>
+    <div class="content">
+
+      <div id="tab-appointments">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">TOTAL</div></div>
+          <div class="stat-card"><div class="stat-num" id="statPending">0</div><div class="stat-label">PENDING</div></div>
+          <div class="stat-card"><div class="stat-num" id="statConfirmed">0</div><div class="stat-label">CONFIRMED</div></div>
+        </div>
+        <table><thead><tr><th>DATE & TIME</th><th>NAME</th><th>PHONE</th><th>SERVICE</th><th>NOTES</th><th>STATUS</th></tr></thead>
+        <tbody id="apptBody"></tbody></table>
+      </div>
+
+      <div id="tab-calendar" style="display:none">
+        <div class="cal-wrap">
+          <div class="cal-left">
+            <div class="mini-cal">
+              <div class="mini-cal-hdr">
+                <button onclick="calPrev()">‹</button>
+                <span id="miniCalTitle"></span>
+                <button onclick="calNext()">›</button>
+              </div>
+              <div class="mini-cal-days">
+                <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+              </div>
+              <div class="mini-cal-grid" id="miniCalGrid"></div>
+            </div>
+            <div class="upcoming">
+              <div style="font-size:10px;letter-spacing:3px;color:var(--mid);margin-bottom:10px;">UPCOMING</div>
+              <div id="upcomingList"></div>
+            </div>
+          </div>
+          <div class="cal-right">
+            <div class="cal-day-hdr">
+              <h3 id="dayTitle">Select a date</h3>
+              <button class="open-all-btn" onclick="quickOpenAll()">+ Open All Slots</button>
+            </div>
+            <div class="timeline" id="dayTimeline"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-designs" style="display:none">
+        <div class="design-grid" id="designGrid"></div>
+      </div>
+
+      <div id="tab-chat" style="display:none">
+        <div class="chat-layout">
+          <div class="session-list" id="sessionList">
+            <div style="padding:13px 15px;font-size:10px;letter-spacing:2px;color:var(--mid);border-bottom:1px solid var(--border);">CUSTOMERS</div>
+          </div>
+          <div class="chat-panel" id="chatPanel"><div class="chat-empty">Select a customer to start chatting</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script>
+let socket,activeSession=null;
+const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天"};
+function showTab(name){
+  Object.keys(TABS).forEach(t=>{
+    const el=document.getElementById("tab-"+t);
+    if(el)el.style.display=t===name?"block":"none";
+  });
+  document.querySelectorAll(".nav-item").forEach((el,i)=>el.classList.toggle("active",i===Object.keys(TABS).indexOf(name)));
+  document.getElementById("tabTitle").textContent=TABS[name];
+  if(name==="appointments")loadAppointments();
+  if(name==="calendar")initCalendar();
+  if(name==="designs")loadDesigns();
+  if(name==="chat"){loadSessions();document.getElementById("chatDot").classList.remove("show");}
+}
+
+/* ── Appointments ── */
+async function loadAppointments(){
+  const data=await fetch("/api/admin/appointments").then(r=>r.json());
+  document.getElementById("statTotal").textContent=data.length;
+  document.getElementById("statPending").textContent=data.filter(d=>d.status==="pending").length;
+  document.getElementById("statConfirmed").textContent=data.filter(d=>d.status==="confirmed").length;
+  document.getElementById("apptBody").innerHTML=data.map(a=>`<tr>
+    <td>${a.date}<br><small style="color:var(--mid)">${a.time}</small></td>
+    <td>${a.name}</td><td>${a.phone}</td>
+    <td style="font-size:12px">${a.service}</td>
+    <td style="font-size:12px;color:var(--mid)">${a.notes||"–"}</td>
+    <td><select class="status-sel" onchange="updateStatus(${a.id},this.value)">
+      <option value="pending" ${a.status==="pending"?"selected":""}>Pending</option>
+      <option value="confirmed" ${a.status==="confirmed"?"selected":""}>Confirmed</option>
+      <option value="done" ${a.status==="done"?"selected":""}>Done</option>
+      <option value="cancelled" ${a.status==="cancelled"?"selected":""}>Cancelled</option>
+    </select></td></tr>`).join("");
+}
+async function updateStatus(id,status){
+  await fetch("/api/admin/appointments/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+  loadAppointments();
+}
+
+/* ── Calendar ── */
+let calY,calM,calSelDate,calAppts=[],calSlots=[];
+const TIMES=["00:00","01:00","02:00","03:00","04:00","05:00","06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
+
+async function initCalendar(){
+  if(!calY){const n=new Date();calY=n.getFullYear();calM=n.getMonth();calSelDate=n.toISOString().split("T")[0];}
+  await loadCalData();
+}
+async function loadCalData(){
+  const ms=calY+"-"+(calM+1).toString().padStart(2,"0");
+  const [a,s]=await Promise.all([
+    fetch("/api/admin/appointments").then(r=>r.json()),
+    fetch("/api/admin/availability?month="+ms).then(r=>r.json())
+  ]);
+  calAppts=a;calSlots=s;
+  renderMiniCal();renderUpcoming();if(calSelDate)renderDayView(calSelDate);
+}
+function renderMiniCal(){
+  document.getElementById("miniCalTitle").textContent=new Date(calY,calM,1).toLocaleDateString("en",{month:"long",year:"numeric"}).toUpperCase();
+  const grid=document.getElementById("miniCalGrid");grid.innerHTML="";
+  const fd=new Date(calY,calM,1).getDay(),fm=fd===0?6:fd-1;
+  const dm=new Date(calY,calM+1,0).getDate();
+  const today=new Date().toISOString().split("T")[0];
+  for(let i=0;i<fm;i++){const e=document.createElement("div");e.className="mday empty";grid.appendChild(e);}
+  for(let d=1;d<=dm;d++){
+    const ds=calY+"-"+(calM+1).toString().padStart(2,"0")+"-"+d.toString().padStart(2,"0");
+    const ha=calAppts.some(a=>a.date===ds&&a.status!=="cancelled");
+    const hs=calSlots.some(s=>s.date===ds&&s.is_available);
+    const el=document.createElement("div");
+    el.className="mday"+(ds===today?" is-today":"")+(ds===calSelDate?" is-sel":"");
+    el.innerHTML=`<span class="dn">${d}</span>`+(ha?`<i class="mdot mdot-a" style="font-style:normal"></i>`:hs?`<i class="mdot mdot-s" style="font-style:normal"></i>`:"");
+    el.onclick=()=>{calSelDate=ds;renderMiniCal();renderDayView(ds);};
+    grid.appendChild(el);
+  }
+}
+function renderUpcoming(){
+  const today=new Date().toISOString().split("T")[0];
+  const up=calAppts.filter(a=>a.date>=today&&a.status!=="cancelled"&&a.status!=="done").sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).slice(0,8);
+  const col={pending:"#f0a500",confirmed:"#63c95e",done:"#4a9edd"};
+  document.getElementById("upcomingList").innerHTML=up.length?up.map(a=>`<div class="ucard" style="border-left:3px solid ${col[a.status]||"#ccc"};background:var(--light);" onclick="calSelDate='${a.date}';renderMiniCal();renderDayView('${a.date}')">
+    <div style="font-size:12px;font-weight:600;">${a.name}</div>
+    <div style="font-size:10px;color:var(--mid);">${a.date} · ${a.time}</div>
+    <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service}</div>
+  </div>`).join(""):"<p style='font-size:12px;color:var(--mid);'>No upcoming appointments</p>";
+}
+function renderDayView(ds){
+  document.getElementById("dayTitle").textContent=new Date(ds+"T12:00:00").toLocaleDateString("en",{weekday:"long",month:"long",day:"numeric",year:"numeric"}).toUpperCase();
+  const da=calAppts.filter(a=>a.date===ds);
+  const dsl=calSlots.filter(s=>s.date===ds);
+  document.getElementById("dayTimeline").innerHTML=TIMES.map(t=>{
+    const ap=da.find(a=>a.time===t);
+    const sl=dsl.find(s=>s.time===t);
+    let block="";
+    if(ap){
+      block=`<div class="tblock tb-appt-${ap.status}">
+        <div style="font-size:13px;font-weight:600;">${ap.name} <span style="font-size:10px;float:right;opacity:.7">${ap.status.toUpperCase()}</span></div>
+        <div style="font-size:11px;opacity:.8;">${ap.service}</div>
+        <div style="font-size:10px;opacity:.6;">${ap.phone}${ap.notes?" · "+ap.notes:""}</div>
+      </div>`;
+    } else if(sl&&sl.is_available){
+      block=`<div class="tblock tb-open">
+        <span style="font-size:12px;color:#2a7a2a;">✓ Open${sl.note?" · "+sl.note:""}</span>
+        <button onclick="delSlot(${sl.id})" style="border:none;background:none;color:#aaa;cursor:pointer;font-size:15px;">✕</button>
+      </div>`;
+    } else {
+      block=`<div class="tblock tb-empty" onclick="addSlot('${ds}','${t}')"><span style="font-size:11px;color:var(--mid);">+ Open slot</span></div>`;
+    }
+    return `<div class="trow"><div class="ttime">${t}</div>${block}</div>`;
+  }).join("");
+}
+async function addSlot(date,time){
+  await fetch("/api/admin/availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date,time,is_available:true,note:""})});
+  await loadCalData();
+}
+async function delSlot(id){
+  await fetch("/api/admin/availability/"+id,{method:"DELETE"});
+  await loadCalData();
+}
+async function quickOpenAll(){
+  if(!calSelDate)return;
+  for(const t of TIMES){
+    if(!calSlots.find(s=>s.date===calSelDate&&s.time===t))
+      await fetch("/api/admin/availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:calSelDate,time:t,is_available:true,note:""})});
+  }
+  await loadCalData();
+}
+function calPrev(){calM--;if(calM<0){calM=11;calY--;}calSelDate=null;loadCalData();}
+function calNext(){calM++;if(calM>11){calM=0;calY++;}calSelDate=null;loadCalData();}
+
+/* ── Designs ── */
+async function loadDesigns(){
+  const data=await fetch("/api/admin/designs").then(r=>r.json());
+  document.getElementById("designGrid").innerHTML=data.map(d=>`<div class="design-card">
+    <img src="/uploads/${d.filename}" onerror="this.style.display='none'">
+    <div class="design-card-body">
+      <div class="design-card-name">${d.customer_name}</div>
+      <div class="design-card-phone">${d.phone||"No phone"} · ${d.created_at}</div>
+      <div class="ai-box">🤖 ${d.ai_analysis||"–"}</div>
+      <div style="font-size:11px;color:var(--mid);margin-bottom:6px;">AI Estimate: <strong>${d.price_estimate||"–"}</strong></div>
+      ${d.admin_price?`<div style="background:#eaf3de;color:#3b6d11;border-radius:6px;padding:8px;font-size:12px;">✓ ${d.admin_price} — ${d.admin_note}</div>`:`
+      <div class="admin-review">
+        <input type="text" id="price_${d.id}" placeholder="Your price e.g. RM95">
+        <input type="text" id="note_${d.id}" placeholder="Note for customer...">
+        <button onclick="saveReview(${d.id})">Save Review</button>
+      </div>`}
+    </div></div>`).join("")||"<p style='color:var(--mid);font-size:13px;'>No design uploads yet.</p>";
+  document.getElementById("designDot").classList.remove("show");
+}
+async function saveReview(id){
+  await fetch("/api/admin/designs/"+id+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({price:document.getElementById("price_"+id).value,note:document.getElementById("note_"+id).value})});
+  loadDesigns();
+}
+
+/* ── Chat ── */
+function initSocket(){
+  socket=io();
+  socket.emit("join",{session_id:"admin-main",is_admin:true});
+  socket.on("new_appointment",()=>document.getElementById("apptDot").classList.add("show"));
+  socket.on("new_design",()=>document.getElementById("designDot").classList.add("show"));
+  socket.on("new_session",()=>{loadSessions();document.getElementById("chatDot").classList.add("show");});
+  socket.on("customer_message",d=>{
+    document.getElementById("chatDot").classList.add("show");
+    if(d.session_id===activeSession)appendMsg("customer",d.message,d.timestamp);
+    else{const el=document.querySelector(`[data-sid="${d.session_id}"] .new-badge`);if(el)el.style.display="inline-block";}
+  });
+  socket.on("receive_message",d=>{if(d.session_id===activeSession&&d.sender==="admin")appendMsg("admin",d.message,d.timestamp);});
+}
+async function loadSessions(){
+  const data=await fetch("/api/admin/chat-sessions").then(r=>r.json());
+  const list=document.getElementById("sessionList");const hdr=list.children[0];
+  list.innerHTML="";list.appendChild(hdr);
+  data.forEach(s=>{
+    const el=document.createElement("div");el.className="session-item"+(s.id===activeSession?" active":"");el.dataset.sid=s.id;
+    el.innerHTML=`<div class="session-cname">${s.customer_name} <span class="new-badge" style="display:none;width:8px;height:8px;border-radius:50%;background:#e24b4a;display:none;margin-left:4px;"></span></div>
+      <div class="session-preview">${s.last_message&&s.last_message.startsWith("[[img]]")?"📷 Photo":(s.last_message||"No messages yet")}</div>
+      <div style="font-size:10px;color:#b09080;">${s.phone||""} · ${s.last_time||s.created_at}</div>`;
+    el.onclick=()=>openSession(s.id,s.customer_name,s.phone);list.appendChild(el);
+  });
+}
+async function openSession(sid,name,phone){
+  activeSession=sid;
+  document.querySelectorAll(".session-item").forEach(el=>el.classList.toggle("active",el.dataset.sid===sid));
+  socket.emit("admin_join_session",{session_id:sid});
+  document.getElementById("chatPanel").innerHTML=`
+    <div class="chat-panel-header"><h3 style="font-size:14px;">${name}</h3><p style="font-size:11px;color:var(--mid);">${phone||"No phone"}</p></div>
+    <div class="chat-msgs" id="adminMsgs"></div>
+    <div class="chat-send-area">
+      <input type="text" id="adminInput" placeholder="Reply to ${name}..." onkeydown="if(event.key==='Enter')adminSend()">
+      <button onclick="adminSend()">Send</button>
+    </div>`;
+  const msgs=await fetch("/api/chat/messages/"+sid).then(r=>r.json());
+  msgs.forEach(m=>appendMsg(m.sender,m.message,m.timestamp));
+}
+function appendMsg(sender,message,time){
+  const msgs=document.getElementById("adminMsgs");if(!msgs)return;
+  const div=document.createElement("div");div.className="msg "+sender;
+  const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,"<br>");
+  div.innerHTML=body+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
+  msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
+}
+function adminSend(){
+  const input=document.getElementById("adminInput");const msg=input.value.trim();
+  if(!msg||!activeSession||!socket)return;
+  socket.emit("send_message",{session_id:activeSession,sender:"admin",message:msg});input.value="";
+}
+async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
+initSocket();loadAppointments();
+</script>
+{% endif %}
+</body>
+</html>
