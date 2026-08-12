@@ -104,6 +104,7 @@ async function login(){
     <div class="nav-item" onclick="showTab('availability')">🗓️ Availability <span class="notif-dot" id="availDot"></span></div>
     <div class="nav-item" onclick="showTab('designs')">🖼️ Design Uploads <span class="notif-dot" id="designDot"></span></div>
     <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
+    <div class="nav-item" onclick="showTab('availability')">📅 Availability <span class="notif-dot" id="availDot"></span></div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
@@ -157,10 +158,153 @@ async function login(){
           <div class="chat-panel" id="chatPanel"><div class="chat-empty">Select a customer to start chatting</div></div>
         </div>
       </div>
+      <div id="tab-availability" style="display:none">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-num" id="totalSlots">0</div><div class="stat-label">TOTAL SLOTS</div></div>
+          <div class="stat-card"><div class="stat-num" id="openSlots">0</div><div class="stat-label">OPEN</div></div>
+          <div class="stat-card"><div class="stat-num" id="closedSlots">0</div><div class="stat-label">CLOSED</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:8px;">
+          <!-- Calendar -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <button onclick="calPrev()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">‹</button>
+              <h3 id="calTitle" style="font-family:Georgia,serif;letter-spacing:2px;font-size:16px;"></h3>
+              <button onclick="calNext()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">›</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;">
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Sun</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Mon</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Tue</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Wed</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Thu</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Fri</div>
+              <div style="font-size:11px;color:var(--mid);padding:6px;font-weight:600;">Sat</div>
+            </div>
+            <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px;"></div>
+          </div>
+          <!-- Side panel -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;">
+            <div id="sidePanel">
+              <p style="color:var(--mid);font-size:13px;">Click a date to manage slots</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
+<style>
+.cal-day { border-radius:8px; padding:6px 4px; cursor:pointer; transition:.15s; min-height:56px; font-size:13px; position:relative; }
+.cal-day:hover { background:var(--light); }
+.cal-day.today { border:2px solid var(--rose); }
+.cal-day.selected { background:var(--rose) !important; color:#fff; }
+.cal-day.past { opacity:.4; cursor:default; }
+.cal-day.empty { cursor:default; }
+.cal-dot { width:6px; height:6px; border-radius:50%; margin:2px auto 0; }
+.dot-open { background:#63c95e; }
+.dot-closed { background:#e24b4a; }
+.time-chip { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12px; }
+.chip-open { background:#eaf3de; color:#3b6d11; }
+.chip-closed { background:#fcebeb; color:#a32d2d; }
+</style>
 <script>
+let calYear, calMonth, calData = {}, selectedDate = null;
+
+function initCal() {
+  const now = new Date();
+  calYear = now.getFullYear(); calMonth = now.getMonth();
+  loadCalMonth();
+}
+
+async function loadCalMonth() {
+  const monthStr = calYear+'-'+(calMonth+1).toString().padStart(2,'0');
+  document.getElementById('calTitle').textContent = new Date(calYear,calMonth,1).toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase();
+  const res = await fetch('/api/admin/availability?month='+monthStr);
+  const data = await res.json();
+  calData = {};
+  data.forEach(s => {
+    if (!calData[s.date]) calData[s.date] = [];
+    calData[s.date].push(s);
+  });
+  updateStats(data);
+  renderCal();
+}
+
+function updateStats(data) {
+  document.getElementById('totalSlots').textContent = data.length;
+  document.getElementById('openSlots').textContent = data.filter(s=>s.is_available).length;
+  document.getElementById('closedSlots').textContent = data.filter(s=>!s.is_available).length;
+}
+
+function renderCal() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  const first = new Date(calYear, calMonth, 1).getDay();
+  const days = new Date(calYear, calMonth+1, 0).getDate();
+  const today = new Date().toISOString().split('T')[0];
+  for (let i=0;i<first;i++) {
+    const el=document.createElement('div'); el.className='cal-day empty'; grid.appendChild(el);
+  }
+  for (let d=1;d<=days;d++) {
+    const dateStr = calYear+'-'+(calMonth+1).toString().padStart(2,'0')+'-'+d.toString().padStart(2,'0');
+    const slots = calData[dateStr] || [];
+    const openCount = slots.filter(s=>s.is_available).length;
+    const el = document.createElement('div');
+    el.className = 'cal-day' + (dateStr===today?' today':'') + (dateStr<today?' past':'') + (dateStr===selectedDate?' selected':'');
+    el.innerHTML = `<div>${d}</div>${openCount>0?`<div class="cal-dot dot-open"></div>`:''}${slots.length>openCount?`<div class="cal-dot dot-closed"></div>`:''}`;
+    if (dateStr >= today) el.onclick = () => selectDate(dateStr);
+    grid.appendChild(el);
+  }
+}
+
+function selectDate(dateStr) {
+  selectedDate = dateStr;
+  renderCal();
+  const slots = calData[dateStr] || [];
+  const label = new Date(dateStr+'T12:00:00').toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'});
+  const times = ['10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM','1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM','4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM'];
+  document.getElementById('sidePanel').innerHTML = `
+    <h4 style="font-family:Georgia,serif;margin-bottom:4px;font-size:14px;">${label}</h4>
+    <p style="font-size:11px;color:var(--mid);margin-bottom:14px;">${slots.length} slot(s) set</p>
+    <div style="margin-bottom:14px;">
+      ${slots.map(s=>`<div class="time-chip ${s.is_available?'chip-open':'chip-closed'}">
+        <span>${s.time}</span>
+        <div style="display:flex;gap:6px;">
+          <span style="cursor:pointer;font-size:11px;" onclick="toggleSlot(${s.id},'${dateStr}','${s.time}',${!s.is_available})">${s.is_available?'Close':'Open'}</span>
+          <span style="cursor:pointer;font-size:11px;" onclick="deleteSlot(${s.id},'${dateStr}')">✕</span>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div style="font-size:12px;color:var(--mid);margin-bottom:6px;">Add time slot:</div>
+    <select id="newTime" style="width:100%;padding:7px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:6px;">
+      ${times.filter(t=>!slots.find(s=>s.time===t)).map(t=>`<option>${t}</option>`).join('')}
+    </select>
+    <input id="newNote" type="text" placeholder="Note (optional)" style="width:100%;padding:7px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:8px;">
+    <button onclick="addSlot('${dateStr}')" style="width:100%;padding:8px;background:var(--rose);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">+ Add Slot</button>`;
+}
+
+async function addSlot(date) {
+  const time = document.getElementById('newTime').value;
+  const note = document.getElementById('newNote').value;
+  if (!time) return;
+  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:true,note})});
+  await loadCalMonth(); selectDate(date);
+}
+
+async function toggleSlot(id, date, time, val) {
+  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:val,note:''})});
+  await loadCalMonth(); selectDate(date);
+}
+
+async function deleteSlot(id, date) {
+  await fetch('/api/admin/availability/'+id,{method:'DELETE'});
+  await loadCalMonth(); selectDate(date);
+}
+
+function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} selectedDate=null; loadCalMonth(); }
+function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} selectedDate=null; loadCalMonth(); }
+</script>
 let socket,activeSession=null;
 const tabs={appointments:'Reservations · 预约管理',availability:'Availability · 可预约管理',designs:'Design Uploads · 设计图评估',chat:'Live Chat · 在线聊天'};
 function showTab(name){
@@ -171,6 +315,7 @@ function showTab(name){
   if(name==='availability')loadAvailability();
   if(name==='designs')loadDesigns();
   if(name==='chat'){loadSessions();document.getElementById('chatDot').classList.remove('show');}
+  if(name==='availability'){initCal();}
 }
 async function loadAppointments(){
   const res=await fetch('/api/admin/appointments');const data=await res.json();

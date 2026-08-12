@@ -46,6 +46,13 @@ def init_db():
         id SERIAL PRIMARY KEY, session_id TEXT NOT NULL,
         sender TEXT NOT NULL, message TEXT NOT NULL,
         timestamp TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS availability (
+        id SERIAL PRIMARY KEY,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        is_available BOOLEAN DEFAULT TRUE,
+        note TEXT DEFAULT '',
+        UNIQUE(date, time))''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -253,6 +260,46 @@ def join_design_notify(data):
     phone = data.get('phone','')
     if phone:
         join_room('design_notify_'+phone)
+
+@app.route('/api/admin/availability', methods=['GET'])
+def get_availability():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    month = request.args.get('month','')
+    conn = get_db(); cur = dict_cursor(conn)
+    if month:
+        cur.execute("SELECT * FROM availability WHERE date LIKE %s ORDER BY date,time", (month+'%',))
+    else:
+        cur.execute("SELECT * FROM availability ORDER BY date,time")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/availability', methods=['POST'])
+def save_availability():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''INSERT INTO availability (date,time,is_available,note)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (date,time) DO UPDATE SET is_available=%s, note=%s''',
+        (d['date'],d['time'],d.get('is_available',True),d.get('note',''),
+         d.get('is_available',True),d.get('note','')))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/availability/<int:aid>', methods=['DELETE'])
+def delete_availability(aid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('DELETE FROM availability WHERE id=%s',(aid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/availability/open')
+def get_open_slots():
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute("SELECT date,time FROM availability WHERE is_available=TRUE AND date >= CURRENT_DATE::TEXT ORDER BY date,time")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT',5000))
