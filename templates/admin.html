@@ -105,6 +105,7 @@ async function login(){
     <div class="nav-item" onclick="showTab('designs')">🖼️ Design Uploads <span class="notif-dot" id="designDot"></span></div>
     <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
     <div class="nav-item" onclick="showTab('availability')">📅 Availability <span class="notif-dot" id="availDot"></span></div>
+    <div class="nav-item" onclick="showTab('calendar')">📅 Calendar</div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
@@ -150,6 +151,41 @@ async function login(){
         <tbody id="availBody"></tbody></table>
       </div>
       <div id="tab-designs" style="display:none"><div class="design-grid" id="designGrid"></div></div>
+
+      <!-- CALENDAR TAB -->
+      <div id="tab-calendar" style="display:none">
+        <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;height:calc(100vh - 150px);">
+
+          <!-- LEFT -->
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <button onclick="calPrev()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">‹</button>
+                <span id="miniCalTitle" style="font-family:Georgia,serif;font-size:13px;letter-spacing:2px;"></span>
+                <button onclick="calNext()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);">›</button>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;">
+                <span style="font-size:10px;color:var(--mid);font-weight:700;">Mo</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Tu</span><span style="font-size:10px;color:var(--mid);font-weight:700;">We</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Th</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Fr</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Sa</span><span style="font-size:10px;color:var(--mid);font-weight:700;">Su</span>
+              </div>
+              <div id="miniCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px;"></div>
+            </div>
+            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;flex:1;overflow-y:auto;">
+              <div style="font-size:10px;letter-spacing:3px;color:var(--mid);margin-bottom:10px;">UPCOMING</div>
+              <div id="upcomingList"></div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Day timeline -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+              <div id="dayViewTitle" style="font-family:Georgia,serif;font-size:16px;letter-spacing:2px;"></div>
+              <button onclick="quickOpenAll()" style="padding:7px 16px;background:var(--rose);color:#fff;border:none;border-radius:20px;font-size:11px;cursor:pointer;letter-spacing:1px;">+ Open All Slots</button>
+            </div>
+            <div id="dayTimeline" style="flex:1;overflow-y:auto;padding:16px 20px;"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="tab-chat" style="display:none">
         <div class="chat-layout">
           <div class="session-list" id="sessionList">
@@ -315,6 +351,7 @@ function showTab(name){
   if(name==='availability')loadAvailability();
   if(name==='designs')loadDesigns();
   if(name==='chat'){loadSessions();document.getElementById('chatDot').classList.remove('show');}
+  if(name==='calendar'){initCalendar();}
   if(name==='availability'){initCal();}
 }
 async function loadAppointments(){
@@ -447,6 +484,131 @@ function adminSend(){
   if(!msg||!activeSession||!socket)return;
   socket.emit('send_message',{session_id:activeSession,sender:'admin',message:msg});input.value='';
 }
+
+/* ── Calendar ── */
+.mini-day{padding:4px 2px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;}
+.mini-day:hover{background:var(--light);}
+.mini-day.empty{cursor:default;}
+.mini-day .dn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.mini-day.is-today .dn{background:var(--rose);color:#fff;}
+.mini-day.is-sel{background:var(--light);}
+.mini-day .dot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
+.dot-a{background:var(--rose);}
+.dot-s{background:#63c95e;}
+.trow{display:flex;align-items:center;gap:12px;margin-bottom:7px;}
+.ttime{width:72px;font-size:11px;color:var(--mid);text-align:right;flex-shrink:0;}
+.tblock{flex:1;border-radius:8px;padding:9px 14px;cursor:pointer;transition:.15s;}
+.tblock-appt-pending{background:#faeeda;border-left:4px solid #f0a500;}
+.tblock-appt-confirmed{background:#eaf3de;border-left:4px solid #63c95e;}
+.tblock-appt-done{background:#e6f1fb;border-left:4px solid #4a9edd;}
+.tblock-appt-cancelled{background:#fcebeb;border-left:4px solid #e24b4a;}
+.tblock-open{background:#edfaed;border:1.5px solid #63c95e;}
+.tblock-empty{border:1.5px dashed var(--border);}
+.tblock-empty:hover{border-color:var(--rose);background:var(--light);}
+
+let calYear,calMonth,calSelectedDate,calAppts=[],calSlots=[];
+
+function initCalendar(){
+  if(calYear)return;
+  const n=new Date();calYear=n.getFullYear();calMonth=n.getMonth();
+  calSelectedDate=n.toISOString().split('T')[0];
+  loadCalData();
+}
+
+async function loadCalData(){
+  const ms=calYear+'-'+(calMonth+1).toString().padStart(2,'0');
+  const [a,s]=await Promise.all([
+    fetch('/api/admin/appointments').then(r=>r.json()),
+    fetch('/api/admin/availability?month='+ms).then(r=>r.json())
+  ]);
+  calAppts=a;calSlots=s;
+  renderMiniCal();renderUpcoming();renderDayView(calSelectedDate);
+}
+
+function renderMiniCal(){
+  document.getElementById('miniCalTitle').textContent=new Date(calYear,calMonth,1).toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase();
+  const grid=document.getElementById('miniCalGrid');grid.innerHTML='';
+  const fd=new Date(calYear,calMonth,1).getDay();
+  const fm=(fd===0)?6:fd-1;
+  const dm=new Date(calYear,calMonth+1,0).getDate();
+  const today=new Date().toISOString().split('T')[0];
+  for(let i=0;i<fm;i++){const e=document.createElement('div');e.className='mini-day empty';grid.appendChild(e);}
+  for(let d=1;d<=dm;d++){
+    const ds=calYear+'-'+(calMonth+1).toString().padStart(2,'0')+'-'+d.toString().padStart(2,'0');
+    const ha=calAppts.some(a=>a.date===ds&&a.status!=='cancelled');
+    const hs=calSlots.some(s=>s.date===ds&&s.is_available);
+    const el=document.createElement('div');
+    el.className='mini-day'+(ds===today?' is-today':'')+(ds===calSelectedDate?' is-sel':'');
+    el.innerHTML=`<span class="dn">${d}</span>${ha?'<i class="dot dot-a" style="font-style:normal"></i>':hs?'<i class="dot dot-s" style="font-style:normal"></i>':''}`;
+    el.onclick=()=>{calSelectedDate=ds;renderMiniCal();renderDayView(ds);};
+    grid.appendChild(el);
+  }
+}
+
+function renderUpcoming(){
+  const today=new Date().toISOString().split('T')[0];
+  const up=calAppts.filter(a=>a.date>=today&&a.status!=='cancelled'&&a.status!=='done').sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).slice(0,7);
+  const statusColor={pending:'#f0a500',confirmed:'#63c95e',done:'#4a9edd'};
+  document.getElementById('upcomingList').innerHTML=up.length?up.map(a=>`
+    <div style="padding:9px 10px 9px 12px;border-left:3px solid ${statusColor[a.status]||'#ccc'};margin-bottom:8px;border-radius:0 8px 8px 0;background:var(--light);cursor:pointer;" onclick="calSelectedDate='${a.date}';renderMiniCal();renderDayView('${a.date}')">
+      <div style="font-size:12px;font-weight:600;">${a.name}</div>
+      <div style="font-size:10px;color:var(--mid);">${a.date} · ${a.time}</div>
+      <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service}</div>
+    </div>`).join(''):'<p style="font-size:12px;color:var(--mid);">No upcoming appointments</p>';
+}
+
+const TIMES=['10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM','1:00 PM','1:30 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM','4:00 PM','4:30 PM','5:00 PM','5:30 PM','6:00 PM'];
+
+function renderDayView(ds){
+  document.getElementById('dayViewTitle').textContent=new Date(ds+'T12:00:00').toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase();
+  const da=calAppts.filter(a=>a.date===ds);
+  const dsl=calSlots.filter(s=>s.date===ds);
+  document.getElementById('dayTimeline').innerHTML=TIMES.map(t=>{
+    const ap=da.find(a=>a.time===t);
+    const sl=dsl.find(s=>s.time===t);
+    let block='';
+    if(ap){
+      block=`<div class="tblock tblock-appt-${ap.status}">
+        <div style="font-size:13px;font-weight:600;">${ap.name} <span style="font-size:10px;float:right;opacity:.6">${ap.status.toUpperCase()}</span></div>
+        <div style="font-size:11px;opacity:.75;">${ap.service}</div>
+        <div style="font-size:10px;opacity:.6;">${ap.phone}${ap.notes?' · '+ap.notes:''}</div>
+      </div>`;
+    } else if(sl&&sl.is_available){
+      block=`<div class="tblock tblock-open" style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:12px;color:#2a7a2a;">✓ Open${sl.note?' · '+sl.note:''}</span>
+        <button onclick="delSlot(${sl.id})" style="border:none;background:none;color:#999;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+      </div>`;
+    } else {
+      block=`<div class="tblock tblock-empty" onclick="addSlot('${ds}','${t}')" title="Click to open this slot">
+        <span style="font-size:11px;color:var(--mid);">+ Open slot</span>
+      </div>`;
+    }
+    return `<div class="trow"><div class="ttime">${t}</div>${block}</div>`;
+  }).join('');
+}
+
+async function addSlot(date,time){
+  await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,time,is_available:true,note:''})});
+  await loadCalData();
+}
+
+async function delSlot(id){
+  await fetch('/api/admin/availability/'+id,{method:'DELETE'});
+  await loadCalData();
+}
+
+async function quickOpenAll(){
+  if(!calSelectedDate)return;
+  for(const t of TIMES){
+    const existing=calSlots.find(s=>s.date===calSelectedDate&&s.time===t);
+    if(!existing) await fetch('/api/admin/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:calSelectedDate,time:t,is_available:true,note:''})});
+  }
+  await loadCalData();
+}
+
+function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}calSelectedDate=null;loadCalData();}
+function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}calSelectedDate=null;loadCalData();}
+
 async function logout(){await fetch('/api/admin/logout',{method:'POST'});location.reload();}
 initSocket();loadAppointments();
 </script>
