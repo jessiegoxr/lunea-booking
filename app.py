@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, session, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
-import sqlite3, os, uuid, base64
+import psycopg2, psycopg2.extras
+import os, uuid, base64
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -12,58 +13,40 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lunea2026')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def get_db():
-    conn = sqlite3.connect('lunea.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    return psycopg2.connect(DATABASE_URL)
+
+def dict_cursor(conn):
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 def init_db():
-    conn = get_db()
-    conn.executescript('''
-        CREATE TABLE IF NOT EXISTS appointments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL, phone TEXT NOT NULL, service TEXT NOT NULL,
-            date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '',
-            status TEXT DEFAULT 'pending',
-            created_at TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS design_uploads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_name TEXT NOT NULL, phone TEXT NOT NULL,
-            filename TEXT NOT NULL, original_name TEXT NOT NULL,
-            ai_analysis TEXT DEFAULT '', price_estimate TEXT DEFAULT '',
-            admin_note TEXT DEFAULT '', admin_price TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS availability (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            time TEXT NOT NULL,
-            available INTEGER DEFAULT 0,
-            note TEXT DEFAULT '',
-            updated_at TEXT DEFAULT (datetime('now','localtime')),
-            UNIQUE(date, time)
-        );
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id TEXT PRIMARY KEY, customer_name TEXT NOT NULL,
-            phone TEXT DEFAULT '', last_message TEXT DEFAULT '',
-            last_time TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL, sender TEXT NOT NULL,
-            message TEXT NOT NULL,
-            timestamp TEXT DEFAULT (datetime('now','localtime'))
-        );
-    ''')
-    conn.commit()
-    conn.close()
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS appointments (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL,
+        service TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL,
+        notes TEXT DEFAULT '', status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS design_uploads (
+        id SERIAL PRIMARY KEY, customer_name TEXT NOT NULL, phone TEXT NOT NULL,
+        filename TEXT NOT NULL, original_name TEXT NOT NULL,
+        ai_analysis TEXT DEFAULT '', price_estimate TEXT DEFAULT '',
+        admin_note TEXT DEFAULT '', admin_price TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS chat_sessions (
+        id TEXT PRIMARY KEY, customer_name TEXT NOT NULL,
+        phone TEXT DEFAULT '', last_message TEXT DEFAULT '',
+        last_time TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY, session_id TEXT NOT NULL,
+        sender TEXT NOT NULL, message TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT NOW())''')
+    conn.commit(); cur.close(); conn.close()
 
 init_db()
 
@@ -116,71 +99,15 @@ def customer_home():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-def get_availability(date=None):
-    conn = get_db()
-    if date:
-        rows = conn.execute('SELECT * FROM availability WHERE date=? ORDER BY time', (date,)).fetchall()
-    else:
-        rows = conn.execute('SELECT * FROM availability ORDER BY date,time').fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-@app.route('/api/availability')
-def api_availability():
-    start = request.args.get('start')
-    end = request.args.get('end')
-    conn = get_db()
-    if start and end:
-        rows = conn.execute('SELECT * FROM availability WHERE date BETWEEN ? AND ? ORDER BY date,time', (start, end)).fetchall()
-    else:
-        rows = conn.execute('SELECT * FROM availability ORDER BY date,time').fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/admin/availability')
-def admin_availability():
-    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    return jsonify(get_availability())
-
-@app.route('/api/admin/availability', methods=['POST'])
-def save_availability():
-    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    d = request.json or {}
-    if not all(d.get(k) for k in ['date','time']):
-        return jsonify({'success':False,'error':'Date and time are required.'}), 400
-    available = 1 if d.get('available') else 0
-    conn = get_db()
-    conn.execute('INSERT INTO availability (date,time,available,note,updated_at) VALUES (?,?,?,?,datetime(\'now\',\'localtime\'))'
-                 'ON CONFLICT(date,time) DO UPDATE SET available=excluded.available,note=excluded.note,updated_at=excluded.updated_at',
-                 (d['date'],d['time'],available,d.get('note','')))
-    conn.commit(); conn.close()
-    return jsonify({'success':True})
-
-@app.route('/api/admin/availability/<int:aid>', methods=['DELETE'])
-def delete_availability(aid):
-    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db()
-    conn.execute('DELETE FROM availability WHERE id=?',(aid,))
-    conn.commit(); conn.close()
-    return jsonify({'success':True})
-
 @app.route('/api/book', methods=['POST'])
 def book_appointment():
     d = request.json or {}
     if not all(d.get(f) for f in ['name','phone','service','date','time']):
         return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
-    conn = get_db()
-    slot = conn.execute('SELECT available FROM availability WHERE date=? AND time=?', (d['date'], d['time'])).fetchone()
-    if not slot or slot['available'] != 1:
-        conn.close()
-        return jsonify({'success':False,'error':'Selected slot is not available. Please choose another date/time.'}), 400
-    exists = conn.execute('SELECT COUNT(1) AS cnt FROM appointments WHERE date=? AND time=? AND status != ?', (d['date'], d['time'], 'cancelled')).fetchone()
-    if exists['cnt'] > 0:
-        conn.close()
-        return jsonify({'success':False,'error':'That slot is already booked. Please choose another date/time.'}), 400
-    conn.execute('INSERT INTO appointments (name,phone,service,date,time,notes) VALUES (?,?,?,?,?,?)',
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO appointments (name,phone,service,date,time,notes) VALUES (%s,%s,%s,%s,%s,%s)',
         (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes','')))
-    conn.commit(); conn.close()
+    conn.commit(); cur.close(); conn.close()
     socketio.emit('new_appointment',{'name':d['name'],'service':d['service'],'date':d['date']},room='admin')
     return jsonify({'success':True})
 
@@ -198,10 +125,10 @@ def upload_design():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     result = analyze_nail_design(filepath, original_name)
-    conn = get_db()
-    conn.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate) VALUES (?,?,?,?,?,?)',
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate) VALUES (%s,%s,%s,%s,%s,%s)',
         (name,phone,filename,original_name,result['analysis'],result['price_estimate']))
-    conn.commit(); conn.close()
+    conn.commit(); cur.close(); conn.close()
     socketio.emit('new_design',{'name':name,'price':result['price_estimate']},room='admin')
     return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/uploads/{filename}'})
 
@@ -226,49 +153,59 @@ def admin_logout():
 @app.route('/api/admin/appointments')
 def get_appointments():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM appointments ORDER BY date,time').fetchall()
-    conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM appointments ORDER BY date,time')
+    rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/admin/appointments/<int:aid>/status', methods=['POST'])
 def update_appt_status(aid):
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db()
-    conn.execute('UPDATE appointments SET status=? WHERE id=?',(request.json.get('status'),aid))
-    conn.commit(); conn.close()
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE appointments SET status=%s WHERE id=%s',(request.json.get('status'),aid))
+    conn.commit(); cur.close(); conn.close()
     return jsonify({'success':True})
 
 @app.route('/api/admin/designs')
 def get_designs():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM design_uploads ORDER BY created_at DESC').fetchall()
-    conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM design_uploads ORDER BY created_at DESC')
+    rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/admin/designs/<int:did>/review', methods=['POST'])
 def review_design(did):
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
     d = request.json or {}
-    conn = get_db()
-    conn.execute('UPDATE design_uploads SET admin_note=?,admin_price=? WHERE id=?',(d.get('note',''),d.get('price',''),did))
-    conn.commit(); conn.close()
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE design_uploads SET admin_note=%s,admin_price=%s WHERE id=%s',
+        (d.get('note',''),d.get('price',''),did))
+    cur2 = dict_cursor(conn)
+    cur2.execute('SELECT phone,customer_name FROM design_uploads WHERE id=%s',(did,))
+    row = cur2.fetchone()
+    conn.commit(); cur.close(); cur2.close(); conn.close()
+    if row and row['phone']:
+        socketio.emit('design_reviewed',{
+            'admin_price': d.get('price',''),
+            'admin_note': d.get('note',''),
+            'customer_name': row['customer_name']
+        }, room='design_notify_'+row['phone'])
     return jsonify({'success':True})
 
 @app.route('/api/admin/chat-sessions')
 def get_chat_sessions():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM chat_sessions ORDER BY last_time DESC,created_at DESC').fetchall()
-    conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM chat_sessions ORDER BY last_time DESC,created_at DESC')
+    rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/chat/messages/<session_id>')
 def get_messages(session_id):
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM chat_messages WHERE session_id=? ORDER BY timestamp',(session_id,)).fetchall()
-    conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM chat_messages WHERE session_id=%s ORDER BY timestamp',(session_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
 @socketio.on('join')
@@ -281,12 +218,15 @@ def on_join(data):
         join_room('admin')
     else:
         join_room(sid)
-        conn = get_db()
-        exists = conn.execute('SELECT id FROM chat_sessions WHERE id=?',(sid,)).fetchone()
+        conn = get_db(); cur = dict_cursor(conn)
+        cur.execute('SELECT id FROM chat_sessions WHERE id=%s',(sid,))
+        exists = cur.fetchone()
         if not exists:
-            conn.execute('INSERT INTO chat_sessions (id,customer_name,phone) VALUES (?,?,?)',(sid,name,phone))
+            cur2 = conn.cursor()
+            cur2.execute('INSERT INTO chat_sessions (id,customer_name,phone) VALUES (%s,%s,%s)',(sid,name,phone))
+            cur2.close()
             conn.commit()
-        conn.close()
+        cur.close(); conn.close()
         emit('new_session',{'session_id':sid,'name':name,'phone':phone},room='admin')
 
 @socketio.on('send_message')
@@ -296,10 +236,10 @@ def on_message(data):
     sender = data.get('sender','customer')
     if not msg or not sid: return
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    conn = get_db()
-    conn.execute('INSERT INTO chat_messages (session_id,sender,message,timestamp) VALUES (?,?,?,?)',(sid,sender,msg,now))
-    conn.execute('UPDATE chat_sessions SET last_message=?,last_time=? WHERE id=?',(msg[:60],now,sid))
-    conn.commit(); conn.close()
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO chat_messages (session_id,sender,message,timestamp) VALUES (%s,%s,%s,%s)',(sid,sender,msg,now))
+    cur.execute('UPDATE chat_sessions SET last_message=%s,last_time=%s WHERE id=%s',(msg[:60],now,sid))
+    conn.commit(); cur.close(); conn.close()
     emit('receive_message',{'session_id':sid,'sender':sender,'message':msg,'timestamp':now},room=sid)
     if sender == 'customer':
         emit('customer_message',{'session_id':sid,'message':msg,'timestamp':now},room='admin')
@@ -310,9 +250,9 @@ def admin_join_session(data):
 
 @socketio.on('join_design_notify')
 def join_design_notify(data):
-    phone = data.get('phone', '')
+    phone = data.get('phone','')
     if phone:
-        join_room('design_notify_' + phone)
+        join_room('design_notify_'+phone)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT',5000))
