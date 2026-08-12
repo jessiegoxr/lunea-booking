@@ -4,6 +4,7 @@ import psycopg2, psycopg2.extras
 import os, uuid, base64
 from datetime import datetime
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'lunea-secret-change-me')
@@ -46,6 +47,14 @@ def init_db():
         id SERIAL PRIMARY KEY, session_id TEXT NOT NULL,
         sender TEXT NOT NULL, message TEXT NOT NULL,
         timestamp TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT DEFAULT '',
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    )''')
     cur.execute('''CREATE TABLE IF NOT EXISTS availability (
         id SERIAL PRIMARY KEY,
         date TEXT NOT NULL,
@@ -53,6 +62,14 @@ def init_db():
         is_available BOOLEAN DEFAULT TRUE,
         note TEXT DEFAULT '',
         UNIQUE(date, time))''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT DEFAULT '',
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    )''')
     cur.execute('''CREATE TABLE IF NOT EXISTS availability (
         id SERIAL PRIMARY KEY, date TEXT NOT NULL, time TEXT NOT NULL,
         is_available BOOLEAN DEFAULT TRUE, note TEXT DEFAULT '',
@@ -104,7 +121,13 @@ Price reference:
 
 @app.route('/')
 def customer_home():
-    return render_template('customer.html')
+    customer = None
+    if session.get('customer_email'):
+        conn = get_db(); cur = dict_cursor(conn)
+        cur.execute('SELECT id,email,name,phone FROM customers WHERE email=%s',(session['customer_email'],))
+        row = cur.fetchone(); cur.close(); conn.close()
+        customer = dict(row) if row else None
+    return render_template('customer.html', customer=customer)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -265,6 +288,51 @@ def join_design_notify(data):
     if phone:
         join_room('design_notify_'+phone)
 
+@app.route('/api/signup', methods=['POST'])
+def customer_signup():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    name = d.get('name','').strip()
+    phone = d.get('phone','').strip()
+    password = d.get('password','')
+    if not all([email, name, password]):
+        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
+    if len(password) < 6:
+        return jsonify({'success':False,'error':'Password must be at least 6 characters.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO customers (email,name,phone,password_hash) VALUES (%s,%s,%s,%s)',
+            (email,name,phone,generate_password_hash(password)))
+        conn.commit(); cur.close(); conn.close()
+        session['customer_email'] = email
+        session['customer_name'] = name
+        return jsonify({'success':True})
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        if 'unique' in str(e).lower():
+            return jsonify({'success':False,'error':'Email already registered. Please login instead.'}), 400
+        return jsonify({'success':False,'error':'Signup failed. Please try again.'}), 500
+
+@app.route('/api/customer/login', methods=['POST'])
+def customer_login():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    password = d.get('password','')
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM customers WHERE email=%s',(email,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not check_password_hash(row['password_hash'], password):
+        return jsonify({'success':False,'error':'Wrong email or password.'}), 401
+    session['customer_email'] = row['email']
+    session['customer_name'] = row['name']
+    return jsonify({'success':True})
+
+@app.route('/api/customer/logout', methods=['POST'])
+def customer_logout():
+    session.pop('customer_email',None)
+    session.pop('customer_name',None)
+    return jsonify({'success':True})
+
 @app.route('/api/admin/availability', methods=['GET'])
 def get_availability():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
@@ -276,6 +344,51 @@ def get_availability():
         cur.execute("SELECT * FROM availability ORDER BY date,time")
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/signup', methods=['POST'])
+def customer_signup():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    name = d.get('name','').strip()
+    phone = d.get('phone','').strip()
+    password = d.get('password','')
+    if not all([email, name, password]):
+        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
+    if len(password) < 6:
+        return jsonify({'success':False,'error':'Password must be at least 6 characters.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO customers (email,name,phone,password_hash) VALUES (%s,%s,%s,%s)',
+            (email,name,phone,generate_password_hash(password)))
+        conn.commit(); cur.close(); conn.close()
+        session['customer_email'] = email
+        session['customer_name'] = name
+        return jsonify({'success':True})
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        if 'unique' in str(e).lower():
+            return jsonify({'success':False,'error':'Email already registered. Please login instead.'}), 400
+        return jsonify({'success':False,'error':'Signup failed. Please try again.'}), 500
+
+@app.route('/api/customer/login', methods=['POST'])
+def customer_login():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    password = d.get('password','')
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM customers WHERE email=%s',(email,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not check_password_hash(row['password_hash'], password):
+        return jsonify({'success':False,'error':'Wrong email or password.'}), 401
+    session['customer_email'] = row['email']
+    session['customer_name'] = row['name']
+    return jsonify({'success':True})
+
+@app.route('/api/customer/logout', methods=['POST'])
+def customer_logout():
+    session.pop('customer_email',None)
+    session.pop('customer_name',None)
+    return jsonify({'success':True})
 
 @app.route('/api/admin/availability', methods=['POST'])
 def save_availability():
@@ -305,6 +418,51 @@ def get_open_slots():
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/signup', methods=['POST'])
+def customer_signup():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    name = d.get('name','').strip()
+    phone = d.get('phone','').strip()
+    password = d.get('password','')
+    if not all([email, name, password]):
+        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
+    if len(password) < 6:
+        return jsonify({'success':False,'error':'Password must be at least 6 characters.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO customers (email,name,phone,password_hash) VALUES (%s,%s,%s,%s)',
+            (email,name,phone,generate_password_hash(password)))
+        conn.commit(); cur.close(); conn.close()
+        session['customer_email'] = email
+        session['customer_name'] = name
+        return jsonify({'success':True})
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        if 'unique' in str(e).lower():
+            return jsonify({'success':False,'error':'Email already registered. Please login instead.'}), 400
+        return jsonify({'success':False,'error':'Signup failed. Please try again.'}), 500
+
+@app.route('/api/customer/login', methods=['POST'])
+def customer_login():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    password = d.get('password','')
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM customers WHERE email=%s',(email,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not check_password_hash(row['password_hash'], password):
+        return jsonify({'success':False,'error':'Wrong email or password.'}), 401
+    session['customer_email'] = row['email']
+    session['customer_name'] = row['name']
+    return jsonify({'success':True})
+
+@app.route('/api/customer/logout', methods=['POST'])
+def customer_logout():
+    session.pop('customer_email',None)
+    session.pop('customer_name',None)
+    return jsonify({'success':True})
+
 @app.route('/api/admin/availability', methods=['GET'])
 def get_availability():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
@@ -316,6 +474,51 @@ def get_availability():
         cur.execute("SELECT * FROM availability ORDER BY date,time")
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/signup', methods=['POST'])
+def customer_signup():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    name = d.get('name','').strip()
+    phone = d.get('phone','').strip()
+    password = d.get('password','')
+    if not all([email, name, password]):
+        return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
+    if len(password) < 6:
+        return jsonify({'success':False,'error':'Password must be at least 6 characters.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO customers (email,name,phone,password_hash) VALUES (%s,%s,%s,%s)',
+            (email,name,phone,generate_password_hash(password)))
+        conn.commit(); cur.close(); conn.close()
+        session['customer_email'] = email
+        session['customer_name'] = name
+        return jsonify({'success':True})
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        if 'unique' in str(e).lower():
+            return jsonify({'success':False,'error':'Email already registered. Please login instead.'}), 400
+        return jsonify({'success':False,'error':'Signup failed. Please try again.'}), 500
+
+@app.route('/api/customer/login', methods=['POST'])
+def customer_login():
+    d = request.json or {}
+    email = d.get('email','').strip().lower()
+    password = d.get('password','')
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM customers WHERE email=%s',(email,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not check_password_hash(row['password_hash'], password):
+        return jsonify({'success':False,'error':'Wrong email or password.'}), 401
+    session['customer_email'] = row['email']
+    session['customer_name'] = row['name']
+    return jsonify({'success':True})
+
+@app.route('/api/customer/logout', methods=['POST'])
+def customer_logout():
+    session.pop('customer_email',None)
+    session.pop('customer_name',None)
+    return jsonify({'success':True})
 
 @app.route('/api/admin/availability', methods=['POST'])
 def save_availability():

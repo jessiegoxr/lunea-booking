@@ -91,9 +91,74 @@ textarea { resize:vertical; min-height:80px; }
 .chat-input input { flex:1; border-radius:20px; }
 .chat-send { padding:10px 18px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px; }
 .chat-send:hover { background:#b09080; }
+
+.auth-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--cream);}
+.auth-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:90vw;}
+.auth-card h1{font-family:Georgia,serif;font-size:26px;letter-spacing:7px;text-align:center;margin-bottom:4px;}
+.auth-card .sub{font-size:11px;letter-spacing:3px;color:var(--rose);text-align:center;margin-bottom:24px;}
+.auth-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;}
+.auth-toggle button{flex:1;padding:9px;border:none;background:none;font-size:13px;cursor:pointer;color:var(--mid);}
+.auth-toggle button.active{background:var(--rose);color:#fff;}
+.auth-err{background:#fcebeb;color:#a32d2d;border:1px solid #f7c1c1;border-radius:6px;padding:9px 12px;font-size:12px;margin-bottom:12px;display:none;}
+.customer-name{font-size:12px;color:var(--mid);letter-spacing:1px;}
+.logout-btn{padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-size:11px;background:none;cursor:pointer;color:var(--mid);}
+.logout-btn:hover{background:var(--rose);color:#fff;border-color:var(--rose);}
 </style>
 </head>
 <body>
+{% if not customer %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>LUNÉA</h1>
+    <p class="sub">NAIL STUDIO · PENANG</p>
+    <div class="auth-toggle">
+      <button class="active" id="tabLogin" onclick="switchAuth('login')">Login 登入</button>
+      <button id="tabSignup" onclick="switchAuth('signup')">Sign Up 注册</button>
+    </div>
+    <div class="auth-err" id="authErr"></div>
+    <div id="signupFields">
+      <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="authName" placeholder="Your name"></div>
+      <div class="form-group"><label>PHONE 电话</label><input type="tel" id="authPhone" placeholder="01X-XXXXXXX"></div>
+    </div>
+    <div class="form-group"><label>EMAIL *</label><input type="email" id="authEmail" placeholder="your@email.com"></div>
+    <div class="form-group"><label>PASSWORD 密码 *</label><input type="password" id="authPassword" placeholder="Min 6 characters"></div>
+    <button class="btn btn-primary" id="authBtn" onclick="submitAuth()" style="margin-top:4px;">LOGIN 登入</button>
+    <p style="text-align:center;font-size:12px;color:var(--mid);margin-top:14px;" id="authSwitch">
+      No account? <a href="#" onclick="switchAuth('signup');return false;" style="color:var(--rose);">Sign up here</a>
+    </p>
+  </div>
+</div>
+<script>
+let authMode = 'login';
+function switchAuth(mode){
+  authMode = mode;
+  document.getElementById('signupFields').style.display = mode==='signup'?'block':'none';
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authBtn').textContent = mode==='login'?'LOGIN 登入':'SIGN UP 注册';
+  document.getElementById('authSwitch').innerHTML = mode==='login'?
+    "No account? <a href=\"#\" onclick=\"switchAuth('signup');return false;\" style=\"color:var(--rose);\">Sign up here</a>":
+    "Already have account? <a href=\"#\" onclick=\"switchAuth('login');return false;\" style=\"color:var(--rose);\">Login</a>";
+  document.getElementById('authErr').style.display='none';
+}
+switchAuth('login');
+async function submitAuth(){
+  const btn=document.getElementById('authBtn');
+  const email=document.getElementById('authEmail').value.trim();
+  const password=document.getElementById('authPassword').value;
+  const err=document.getElementById('authErr');
+  err.style.display='none'; btn.disabled=true; btn.textContent='...';
+  const body = authMode==='login' ? {email,password} :
+    {email,password,name:document.getElementById('authName').value.trim(),phone:document.getElementById('authPhone').value.trim()};
+  const url = authMode==='login' ? '/api/customer/login' : '/api/signup';
+  const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const json = await res.json();
+  btn.disabled=false; btn.textContent=authMode==='login'?'LOGIN 登入':'SIGN UP 注册';
+  if(json.success) location.reload();
+  else { err.textContent=json.error; err.style.display='block'; }
+}
+</script>
+{% else %}
 <nav>
   <div class="nav-inner">
     <div class="nav-brand">LUNÉA</div>
@@ -108,8 +173,8 @@ textarea { resize:vertical; min-height:80px; }
 <div class="section active" id="section-book">
   <div class="page-header"><h1>LUNÉA</h1><p>NAIL STUDIO · PENANG</p></div>
   <div class="divider"><div class="divider-line"></div><div class="divider-text">预约美甲 · Book Appointment</div><div class="divider-line"></div></div>
-  <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="bookName" placeholder="Your name"></div>
-  <div class="form-group"><label>PHONE 电话 *</label><input type="tel" id="bookPhone" placeholder="01X-XXXXXXX"></div>
+  <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="bookName" placeholder="Your name" value="{{ customer.name }}"></div>
+  <div class="form-group"><label>PHONE 电话 *</label><input type="tel" id="bookPhone" placeholder="01X-XXXXXXX" value="{{ customer.phone }}"></div>
   <div class="form-group">
     <label>SERVICE 服务 *</label>
     <select id="bookService">
@@ -158,8 +223,8 @@ textarea { resize:vertical; min-height:80px; }
   <div class="page-header"><h1>LUNÉA</h1><p>DESIGN PRICE ESTIMATE · 设计估价</p></div>
   <div class="divider"><div class="divider-line"></div><div class="divider-text">上传设计图 · Upload Design</div><div class="divider-line"></div></div>
   <div class="form-row" style="margin-bottom:16px;">
-    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="designName" placeholder="Your name"></div>
-    <div class="form-group"><label>PHONE 电话</label><input type="tel" id="designPhone" placeholder="01X-XXXXXXX"></div>
+    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="designName" placeholder="Your name" value="{{ customer.name }}"></div>
+    <div class="form-group"><label>PHONE 电话</label><input type="tel" id="designPhone" placeholder="01X-XXXXXXX" value="{{ customer.phone }}"></div>
   </div>
   <div class="upload-area" id="uploadArea">
     <input type="file" id="designFile" accept="image/*" onchange="previewFile(this)">
@@ -182,7 +247,7 @@ textarea { resize:vertical; min-height:80px; }
 <div class="section" id="section-chat">
   <div class="page-header"><h1>LUNÉA</h1><p>LIVE CHAT · 在线咨询</p></div>
   <div class="chat-start" id="chatStart">
-    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="chatName" placeholder="Your name"></div>
+    <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="chatName" placeholder="Your name" value="{{ customer.name }}"></div>
     <div class="form-group"><label>PHONE 电话</label><input type="tel" id="chatPhone" placeholder="01X-XXXXXXX"></div>
     <button class="btn btn-primary" onclick="startChat()">START CHAT 开始聊天</button>
   </div>
@@ -205,6 +270,10 @@ textarea { resize:vertical; min-height:80px; }
   <button class="price-notify-close" onclick="document.getElementById('priceNotify').style.display='none'">OK, Got it!</button>
 </div>
 <script>
+async function customerLogout(){
+  await fetch('/api/customer/logout',{method:'POST'});
+  location.reload();
+}
 function showSection(name) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
@@ -327,5 +396,6 @@ function sendMsg(){
 }
 window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}refreshAvailabilityPanel();});
 </script>
+{% endif %}
 </body>
 </html>
