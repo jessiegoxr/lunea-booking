@@ -74,6 +74,7 @@ def init_db():
         id SERIAL PRIMARY KEY, date TEXT NOT NULL, time TEXT NOT NULL,
         is_available BOOLEAN DEFAULT TRUE, note TEXT DEFAULT '',
         UNIQUE(date,time))''')
+    cur.execute("ALTER TABLE design_uploads ADD COLUMN IF NOT EXISTS customer_email TEXT")
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -152,6 +153,7 @@ def upload_design():
     file = request.files['file']
     name = request.form.get('name','Customer')
     phone = request.form.get('phone','')
+    customer_email = session.get('customer_email','')
     if not file or not allowed_file(file.filename):
         return jsonify({'success':False,'error':'Please upload JPG/PNG/WEBP image.'}), 400
     original_name = secure_filename(file.filename)
@@ -160,8 +162,8 @@ def upload_design():
     file.save(filepath)
     result = analyze_nail_design(filepath, original_name)
     conn = get_db(); cur = conn.cursor()
-    cur.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate) VALUES (%s,%s,%s,%s,%s,%s)',
-        (name,phone,filename,original_name,result['analysis'],result['price_estimate']))
+    cur.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate,customer_email) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+        (name,phone,filename,original_name,result['analysis'],result['price_estimate'],customer_email))
     conn.commit(); cur.close(); conn.close()
     socketio.emit('new_design',{'name':name,'price':result['price_estimate']},room='admin')
     return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/uploads/{filename}'})
@@ -384,6 +386,14 @@ def delete_availability(aid):
 def get_open_slots():
     conn = get_db(); cur = dict_cursor(conn)
     cur.execute("SELECT date,time FROM availability WHERE is_available=TRUE AND date >= CURRENT_DATE::TEXT ORDER BY date,time")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/customer/designs')
+def get_customer_designs():
+    if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM design_uploads WHERE customer_email=%s ORDER BY created_at DESC',(session['customer_email'],))
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
