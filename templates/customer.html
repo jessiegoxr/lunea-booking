@@ -71,17 +71,17 @@ textarea { resize:vertical; min-height:80px; }
 .design-card-date { font-size:11px; color:var(--mid); margin-bottom:8px; }
 .design-status-done { background:#eaf3de; color:#3b6d11; border-radius:6px; padding:8px; font-size:12px; }
 .design-status-pending { font-size:12px; color:var(--mid); }
-.reservation-card { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; }
-.rsv-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
-.rsv-date { font-size:14px; font-weight:600; color:var(--dark); }
-.rsv-service { font-size:12px; color:var(--mid); margin-top:2px; }
 .rsv-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; letter-spacing:1px; font-weight:600; white-space:nowrap; }
 .rsv-badge-pending { background:#faeeda; color:#a86f00; }
 .rsv-badge-confirmed { background:#eaf3de; color:#3b6d11; }
 .rsv-badge-done { background:#e6f1fb; color:#2266a0; }
 .rsv-badge-cancelled { background:#fcebeb; color:#a32d2d; }
-.rsv-reason { background:#fcebeb; color:#a32d2d; border-radius:8px; padding:10px 12px; font-size:12px; margin-top:10px; }
-.rsv-rebook-btn { margin-top:10px; padding:8px 16px; background:var(--rose); color:#fff; border:none; border-radius:20px; font-size:12px; cursor:pointer; }
+.rsv-rebook-btn { margin-top:4px; padding:4px 12px; background:var(--rose); color:#fff; border:none; border-radius:20px; font-size:11px; cursor:pointer; }
+.rsv-table-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.btn-sm { width:auto; padding:9px 18px; font-size:12px; }
+table.rsv-table { width:100%; border-collapse:collapse; background:var(--white); border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+table.rsv-table th { background:var(--light-rose); padding:10px 14px; font-size:10px; letter-spacing:1px; color:var(--mid); text-align:left; }
+table.rsv-table td { padding:11px 14px; font-size:13px; border-top:1px solid var(--border); vertical-align:top; color:var(--dark); }
 .cp-day{border-radius:6px;cursor:pointer;font-size:12px;padding:5px 2px;display:flex;flex-direction:column;align-items:center;min-height:30px;justify-content:center;}
 .cp-day:hover{background:var(--light-rose);}
 .cp-day.cp-empty{cursor:default;pointer-events:none;}
@@ -223,6 +223,7 @@ async function submitAuth(){
 </nav>
 <div class="section active" id="section-book">
   <div class="page-header"><h1>LUNÉA</h1><p>NAIL STUDIO · PENANG</p></div>
+  <div id="bookFormPanel" style="display:none;">
   <div class="divider"><div class="divider-line"></div><div class="divider-text">预约美甲 · Book Appointment</div><div class="divider-line"></div></div>
   <div class="form-group"><label>NAME 姓名 *</label><input type="text" id="bookName" placeholder="Your name" value="{{ customer.name }}"></div>
   <div class="form-group"><label>PHONE 电话 *</label><input type="tel" id="bookPhone" placeholder="01X-XXXXXXX" value="{{ customer.phone }}"></div>
@@ -256,11 +257,23 @@ async function submitAuth(){
   </div>
   <div class="form-group" id="bookAvailabilityNotice" style="display:none;"><label>Available slots</label><div id="bookAvailabilityText" style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;color:var(--mid);"></div></div>
   <div class="form-group"><label>NOTES 备注</label><textarea id="bookNotes" placeholder="Any special requests..."></textarea></div>
-  <button class="btn btn-primary" onclick="submitBooking()">CONFIRM APPOINTMENT 确认预约</button>
+  <button class="btn btn-primary" id="bookSubmitBtn" onclick="submitBooking()">CONFIRM APPOINTMENT 确认预约</button>
+  <button class="btn" style="border:1px solid var(--border);background:none;color:var(--mid);margin-top:8px;" onclick="toggleBookForm(false)">Cancel</button>
   <div class="alert success" id="bookSuccess">✓ Appointment request sent! We'll confirm via WhatsApp soon.</div>
   <div class="alert error" id="bookError"></div>
-  <div class="divider" style="margin-top:32px;"><div class="divider-line"></div><div class="divider-text">我的预约记录 · My Reservations</div><div class="divider-line"></div></div>
-  <div id="myReservationsList"></div>
+  </div>
+  <div id="bookTablePanel">
+    <div class="rsv-table-hdr">
+      <div class="divider-text">我的预约记录 · My Reservations</div>
+      <button class="btn btn-primary btn-sm" onclick="toggleBookForm(true)">+ Reservation</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="rsv-table">
+        <thead><tr><th>DATE &amp; TIME</th><th>SERVICE</th><th>STATUS</th><th>NOTE</th></tr></thead>
+        <tbody id="myReservationsBody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 <div class="section" id="section-availability">
   <div class="page-header"><h1>LUNÉA</h1><p>AVAILABLE SLOTS · 可预约时段</p></div>
@@ -440,13 +453,13 @@ function availCalPrev(){availCalM--;if(availCalM<0){availCalM=11;availCalY--;}lo
 function availCalNext(){availCalM++;if(availCalM>11){availCalM=0;availCalY++;}loadAvailCalData();}
 
 async function submitBooking(){
-  const btn=document.querySelector('#section-book .btn-primary');
+  const btn=document.getElementById('bookSubmitBtn');
   const data={name:document.getElementById('bookName').value.trim(),phone:document.getElementById('bookPhone').value.trim(),service:document.getElementById('bookService').value,date:document.getElementById('bookDate').value,time:document.getElementById('bookTime').value,notes:document.getElementById('bookNotes').value.trim()};
   document.getElementById('bookSuccess').style.display='none';document.getElementById('bookError').style.display='none';
   btn.disabled=true;btn.textContent='Sending...';
   const res=await fetch('/api/book',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   const json=await res.json();btn.disabled=false;btn.textContent='CONFIRM APPOINTMENT 确认预约';
-  if(json.success){document.getElementById('bookSuccess').style.display='block';['bookName','bookPhone','bookNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('bookService').value='';document.getElementById('bookDate').value='';document.getElementById('bookTime').value='';loadMyReservations();}
+  if(json.success){document.getElementById('bookSuccess').style.display='block';['bookName','bookPhone','bookNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('bookService').value='';document.getElementById('bookDate').value='';document.getElementById('bookTime').value='';loadMyReservations();setTimeout(()=>toggleBookForm(false),1200);}
   else{
     const el=document.getElementById('bookError');el.textContent=json.error;el.style.display='block';
     await refreshAvailabilityPanel();
@@ -455,17 +468,21 @@ async function submitBooking(){
 }
 const RSV_BADGE={pending:'rsv-badge-pending',confirmed:'rsv-badge-confirmed',done:'rsv-badge-done',cancelled:'rsv-badge-cancelled'};
 const RSV_LABEL={pending:'⏳ Pending',confirmed:'✓ Confirmed',done:'✓ Done',cancelled:'✕ Cancelled'};
+function toggleBookForm(show){
+  document.getElementById('bookFormPanel').style.display=show?'block':'none';
+  document.getElementById('bookTablePanel').style.display=show?'none':'block';
+}
 async function loadMyReservations(){
-  const list=document.getElementById('myReservationsList');
+  const body=document.getElementById('myReservationsBody');
   const rows=await fetch('/api/customer/appointments').then(r=>r.json());
-  list.innerHTML=rows.map(r=>`<div class="reservation-card">
-      <div class="rsv-top">
-        <div><div class="rsv-date">${r.date} · ${r.time}</div><div class="rsv-service">${r.service}</div></div>
-        <span class="rsv-badge ${RSV_BADGE[r.status]||''}">${RSV_LABEL[r.status]||r.status}</span>
-      </div>
-      ${r.status==='cancelled'?`<div class="rsv-reason">⚠️ Your reservation was cancelled${r.cancel_reason?': '+r.cancel_reason:''}. Please book another time.</div>
-        <button class="rsv-rebook-btn" onclick="document.getElementById('bookDate').scrollIntoView({behavior:'smooth'})">Reserve Another Time →</button>`:''}
-    </div>`).join('')||'<p style="color:var(--mid);font-size:13px;">No reservations yet.</p>';
+  body.innerHTML=rows.map(r=>`<tr>
+      <td>${r.date}<br><small style="color:var(--mid)">${r.time}</small></td>
+      <td style="font-size:12px">${r.service}</td>
+      <td><span class="rsv-badge ${RSV_BADGE[r.status]||''}">${RSV_LABEL[r.status]||r.status}</span></td>
+      <td style="font-size:12px;color:var(--mid)">${r.status==='cancelled'
+        ?`⚠️ ${r.cancel_reason||'Cancelled'}<br><button class="rsv-rebook-btn" onclick="toggleBookForm(true)">Reserve Another Time →</button>`
+        :'–'}</td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--mid);">No reservations yet.</td></tr>';
 }
 loadMyReservations();
 const uploadArea=document.getElementById('uploadArea');
@@ -507,8 +524,7 @@ function initSocket(){
     if(chatStarted&&sessionId)socket.emit('join',{session_id:sessionId,name:document.getElementById('chatName').value,phone:document.getElementById('chatPhone').value});
     const notifyPhone=document.getElementById('designPhone').value.trim();
     if(notifyPhone)socket.emit('join_design_notify',{phone:notifyPhone});
-    const bookPhone=document.getElementById('bookPhone').value.trim();
-    if(bookPhone)socket.emit('join_appt_notify',{phone:bookPhone});
+    socket.emit('join_customer_room');
   });
   socket.on('design_reviewed',data=>{
     document.getElementById('notifyPrice').textContent=data.admin_price;
