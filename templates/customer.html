@@ -64,6 +64,13 @@ textarea { resize:vertical; min-height:80px; }
 }
 .price-notify strong { color:var(--rose); font-family:Georgia,serif; font-size:16px; display:block; margin:6px 0; }
 .price-notify-close { margin-top:10px; padding:6px 16px; background:var(--rose); color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:12px; }
+.design-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
+.design-card { background:var(--white); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.design-card img { width:100%; height:150px; object-fit:cover; }
+.design-card-body { padding:13px; }
+.design-card-date { font-size:11px; color:var(--mid); margin-bottom:8px; }
+.design-status-done { background:#eaf3de; color:#3b6d11; border-radius:6px; padding:8px; font-size:12px; }
+.design-status-pending { font-size:12px; color:var(--mid); }
 .cp-day{border-radius:6px;cursor:pointer;font-size:12px;padding:5px 2px;display:flex;flex-direction:column;align-items:center;min-height:30px;justify-content:center;}
 .cp-day:hover{background:var(--light-rose);}
 .cp-day.cp-empty{cursor:default;pointer-events:none;}
@@ -246,6 +253,8 @@ async function submitAuth(){
     <button class="btn btn-primary" style="margin-top:12px;" onclick="showSection('chat')">Chat with us to confirm →</button>
   </div>
   <div class="alert error" id="uploadError"></div>
+  <div class="divider" style="margin-top:32px;"><div class="divider-line"></div><div class="divider-text">我的设计记录 · My Designs</div><div class="divider-line"></div></div>
+  <div id="myDesignsList" class="design-grid"></div>
 </div>
 <div class="section" id="section-chat">
   <div class="page-header"><h1>LUNÉA</h1><p>LIVE CHAT · 在线咨询</p></div>
@@ -362,17 +371,41 @@ async function uploadDesign(file){
   try{
     const res=await fetch('/api/upload-design',{method:'POST',body:fd});const json=await res.json();
     document.getElementById('uploadSpinner').style.display='none';
-    if(json.success){document.getElementById('resultImage').src=json.image_url;document.getElementById('resultPrice').textContent=json.price_estimate;document.getElementById('resultAnalysis').textContent=json.analysis;document.getElementById('resultCard').style.display='block';document.getElementById('chatName').value=name;document.getElementById('chatPhone').value=document.getElementById('designPhone').value.trim();}
+    if(json.success){document.getElementById('resultImage').src=json.image_url;document.getElementById('resultPrice').textContent=json.price_estimate;document.getElementById('resultAnalysis').textContent=json.analysis;document.getElementById('resultCard').style.display='block';document.getElementById('chatName').value=name;document.getElementById('chatPhone').value=document.getElementById('designPhone').value.trim();loadMyDesigns();}
     else showUploadError(json.error);
   }catch(e){document.getElementById('uploadSpinner').style.display='none';showUploadError('Upload failed. Please try again.');}
 }
 function showUploadError(msg){const el=document.getElementById('uploadError');el.textContent=msg;el.style.display='block';}
+async function loadMyDesigns(){
+  const list=document.getElementById('myDesignsList');
+  const rows=await fetch('/api/customer/designs').then(r=>r.json());
+  list.innerHTML=rows.map(d=>`<div class="design-card">
+      <img src="/uploads/${d.filename}" alt="Design">
+      <div class="design-card-body">
+        <div class="design-card-date">${d.created_at}</div>
+        ${d.admin_price?`<div class="design-status-done">✓ ${d.admin_price}${d.admin_note?' — '+d.admin_note:''}</div>`
+          :`<div class="design-status-pending">⏳ Pending review · AI est. ${d.price_estimate||'-'}</div>`}
+      </div>
+    </div>`).join('')||'<p style="color:var(--mid);font-size:13px;">No design uploads yet.</p>';
+}
+loadMyDesigns();
 let socket,sessionId,chatStarted=false;
 function initSocket(){
   socket=io();
   socket.on('receive_message',data=>{if(data.session_id===sessionId)appendMsg(data.sender,data.message,data.timestamp);});
-  socket.on('connect',()=>{if(chatStarted&&sessionId)socket.emit('join',{session_id:sessionId,name:document.getElementById('chatName').value,phone:document.getElementById('chatPhone').value});});
+  socket.on('connect',()=>{
+    if(chatStarted&&sessionId)socket.emit('join',{session_id:sessionId,name:document.getElementById('chatName').value,phone:document.getElementById('chatPhone').value});
+    const notifyPhone=document.getElementById('designPhone').value.trim();
+    if(notifyPhone)socket.emit('join_design_notify',{phone:notifyPhone});
+  });
+  socket.on('design_reviewed',data=>{
+    document.getElementById('notifyPrice').textContent=data.admin_price;
+    document.getElementById('notifyNote').textContent=data.admin_note||'';
+    document.getElementById('priceNotify').style.display='block';
+    loadMyDesigns();
+  });
 }
+initSocket();
 function startChat(){
   const name=document.getElementById('chatName').value.trim();
   if(!name){alert('Please enter your name.');return;}
