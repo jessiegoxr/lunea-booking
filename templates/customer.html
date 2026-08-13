@@ -84,6 +84,32 @@ textarea { resize:vertical; min-height:80px; }
 .cp-dot{width:5px;height:5px;border-radius:50%;background:#63c95e;margin-top:2px;}
 .slot-chip{padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid #63c95e;color:#2a7a2a;background:#edfaed;transition:.15s;}
 .slot-chip:hover,.slot-chip.sel{background:var(--rose);border-color:var(--rose);color:#fff;}
+.cal-wrap{display:grid;grid-template-columns:230px 1fr;gap:16px;}
+.mini-cal{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.mini-cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.mini-cal-hdr button{border:none;background:none;font-size:20px;cursor:pointer;color:var(--mid);padding:2px 8px;}
+.mini-cal-hdr span{font-family:Georgia,serif;font-size:12px;letter-spacing:1px;}
+.mini-cal-days{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;}
+.mini-cal-days span{font-size:9px;color:var(--mid);font-weight:700;padding:3px 0;}
+.mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px;}
+.mday{padding:3px 1px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;min-height:30px;justify-content:center;}
+.mday:hover{background:var(--light-rose);}
+.mday.empty{cursor:default;pointer-events:none;}
+.mday.cp-past{opacity:.35;cursor:default;}
+.mday .dn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.mday.is-today .dn{background:var(--rose);color:#fff;}
+.mday.is-sel{background:var(--light-rose);}
+.mdot{width:5px;height:5px;border-radius:50%;margin-top:2px;}
+.mdot-s{background:#63c95e;}
+.cal-right{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.cal-day-hdr{padding:14px 18px;border-bottom:1px solid var(--border);}
+.cal-day-hdr h3{font-family:Georgia,serif;font-size:14px;letter-spacing:1px;color:var(--dark);}
+.timeline{padding:14px 18px;min-height:200px;}
+.trow{display:flex;align-items:center;gap:11px;margin-bottom:7px;}
+.ttime{width:60px;font-size:11px;color:var(--mid);text-align:right;flex-shrink:0;}
+.tblock{flex:1;border-radius:8px;padding:8px 13px;}
+.tb-open{background:#edfaed;border:1.5px solid #63c95e;}
+@media(max-width:600px){.cal-wrap{grid-template-columns:1fr;}}
 .chat-start { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
 .chat-window { background:var(--white); border:1px solid var(--border); border-radius:12px; display:none; flex-direction:column; height:460px; }
 .chat-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
@@ -178,6 +204,10 @@ async function submitAuth(){
       <button class="nav-tab" onclick="showSection('design')">设计报价</button>
       <button class="nav-tab" onclick="showSection('chat')">Chat <span class="chat-badge" id="chatBadge">1</span></button>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="customer-name">{{ customer.name }}</span>
+      <button class="logout-btn" onclick="customerLogout()">Logout</button>
+    </div>
   </div>
 </nav>
 <div class="section active" id="section-book">
@@ -221,13 +251,24 @@ async function submitAuth(){
 </div>
 <div class="section" id="section-availability">
   <div class="page-header"><h1>LUNÉA</h1><p>AVAILABLE SLOTS · 可预约时段</p></div>
-  <div class="divider"><div class="divider-line"></div><div class="divider-text">Browse available reservation slots for the next two weeks</div><div class="divider-line"></div></div>
-  <div id="availabilitySummary" class="result-card" style="display:block;padding:20px;">
-    <div style="font-size:14px;font-weight:600;color:var(--dark);margin-bottom:8px;">Upcoming availability</div>
-    <div id="availabilityInfo" style="font-size:13px;color:var(--mid);line-height:1.6;">Loading available dates...</div>
+  <div class="divider"><div class="divider-line"></div><div class="divider-text">Browse available reservation slots</div><div class="divider-line"></div></div>
+  <div class="cal-wrap">
+    <div class="mini-cal">
+      <div class="mini-cal-hdr">
+        <button onclick="availCalPrev()" type="button">‹</button>
+        <span id="availCalTitle"></span>
+        <button onclick="availCalNext()" type="button">›</button>
+      </div>
+      <div class="mini-cal-days">
+        <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+      </div>
+      <div class="mini-cal-grid" id="availCalGrid"></div>
+    </div>
+    <div class="cal-right">
+      <div class="cal-day-hdr"><h3 id="availDayTitle">Select a date</h3></div>
+      <div class="timeline" id="availDayTimeline"></div>
+    </div>
   </div>
-  <div id="availabilityList" class="design-grid" style="margin-top:16px;"></div>
-  <div class="alert error" id="availabilityError"></div>
 </div>
 <div class="section" id="section-design">
   <div class="page-header"><h1>LUNÉA</h1><p>DESIGN PRICE ESTIMATE · 设计估价</p></div>
@@ -295,12 +336,9 @@ function showSection(name) {
   const idx={book:0,availability:1,design:2,chat:3}[name];
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
   if(name==='chat'){document.getElementById('chatBadge').classList.remove('show');}
+  if(name==='availability')initAvailCalendar();
 }
 const availabilityCache = {};
-
-function formatDateLabel(date){
-  return new Date(date).toLocaleDateString('zh-Hans', { month:'short', day:'numeric', weekday:'short' });
-}
 
 async function loadAvailability(startDate, endDate){
   const url = `/api/availability?start=${startDate}&end=${endDate}`;
@@ -309,7 +347,7 @@ async function loadAvailability(startDate, endDate){
   const grouped = {};
   data.forEach(slot => {
     if (!grouped[slot.date]) grouped[slot.date] = [];
-    if (slot.available === 1) grouped[slot.date].push(slot.time);
+    grouped[slot.date].push(slot.time);
   });
   return grouped;
 }
@@ -338,15 +376,51 @@ async function refreshAvailabilityPanel(){
   const end = new Date(new Date().setDate(new Date().getDate() + 14)).toISOString().split('T')[0];
   const grouped = await loadAvailability(today, end);
   Object.assign(availabilityCache, grouped);
-  const days = Object.keys(grouped).sort();
-  const summary = days.length ? `${days.length} 个可预约日期，从 ${formatDateLabel(days[0])} 到 ${formatDateLabel(days[days.length-1])}` : '当前没有可预约日期。请稍后再试。';
-  document.getElementById('availabilityInfo').textContent = summary;
-  const list = document.getElementById('availabilityList');
-  list.innerHTML = days.slice(0, 8).map(date => {
-    const times = grouped[date].length;
-    return `<div class="design-card"><div class="design-card-body"><div class="design-card-name">${formatDateLabel(date)}</div><div style="font-size:12px;color:var(--mid);">${times} 可预约时段</div><div style="margin-top:10px;font-size:12px;color:var(--mid);">${grouped[date].slice(0,3).join('，')}${grouped[date].length>3?' ...':''}</div></div></div>`;
-  }).join('') || '<p style="color:var(--mid);font-size:13px;">No available reservation dates were found.</p>';
 }
+
+/* ── Availability calendar (read-only, mirrors admin's calendar; shows only manager-opened slots) ── */
+let availCalY, availCalM, availCalSelDate, availCalSlots=[];
+function initAvailCalendar(){
+  if(!availCalY){const n=new Date();availCalY=n.getFullYear();availCalM=n.getMonth();availCalSelDate=n.toISOString().split('T')[0];}
+  loadAvailCalData();
+}
+async function loadAvailCalData(){
+  const ms=availCalY+'-'+(availCalM+1).toString().padStart(2,'0');
+  const res=await fetch('/api/availability?month='+ms);
+  availCalSlots=await res.json();
+  renderAvailMiniCal();
+  if(availCalSelDate)renderAvailDayView(availCalSelDate);
+}
+function renderAvailMiniCal(){
+  document.getElementById('availCalTitle').textContent=new Date(availCalY,availCalM,1).toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase();
+  const grid=document.getElementById('availCalGrid');grid.innerHTML='';
+  const fd=new Date(availCalY,availCalM,1).getDay(),fm=fd===0?6:fd-1;
+  const dm=new Date(availCalY,availCalM+1,0).getDate();
+  const today=new Date().toISOString().split('T')[0];
+  for(let i=0;i<fm;i++){const e=document.createElement('div');e.className='mday empty';grid.appendChild(e);}
+  for(let d=1;d<=dm;d++){
+    const ds=availCalY+'-'+(availCalM+1).toString().padStart(2,'0')+'-'+d.toString().padStart(2,'0');
+    const hs=availCalSlots.some(s=>s.date===ds);
+    const isPast=ds<today;
+    const el=document.createElement('div');
+    el.className='mday'+(ds===today?' is-today':'')+(ds===availCalSelDate?' is-sel':'')+(isPast?' cp-past':'');
+    el.innerHTML=`<span class="dn">${d}</span>`+(hs?'<i class="mdot mdot-s" style="font-style:normal"></i>':'');
+    if(!isPast)el.onclick=()=>{availCalSelDate=ds;renderAvailMiniCal();renderAvailDayView(ds);};
+    grid.appendChild(el);
+  }
+}
+function renderAvailDayView(ds){
+  document.getElementById('availDayTitle').textContent=new Date(ds+'T12:00:00').toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase();
+  const slots=availCalSlots.filter(s=>s.date===ds).sort((a,b)=>a.time.localeCompare(b.time));
+  const el=document.getElementById('availDayTimeline');
+  if(!slots.length){
+    el.innerHTML='<p style="text-align:center;color:var(--mid);font-size:13px;padding:30px 0;">There is no available slot</p>';
+    return;
+  }
+  el.innerHTML=slots.map(s=>`<div class="trow"><div class="ttime">${s.time}</div><div class="tblock tb-open"><span style="font-size:12px;color:#2a7a2a;">✓ Open${s.note?' · '+s.note:''}</span></div></div>`).join('');
+}
+function availCalPrev(){availCalM--;if(availCalM<0){availCalM=11;availCalY--;}loadAvailCalData();}
+function availCalNext(){availCalM++;if(availCalM>11){availCalM=0;availCalY++;}loadAvailCalData();}
 
 async function submitBooking(){
   const btn=document.querySelector('#section-book .btn-primary');
