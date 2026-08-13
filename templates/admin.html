@@ -67,6 +67,8 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
 .msg-time{font-size:10px;opacity:.6;margin-top:3px;}
 .msg-img{display:block;max-width:100%;border-radius:12px;cursor:pointer;}
 .chat-send-area{padding:11px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.chat-attach{width:36px;height:36px;flex:0 0 auto;border-radius:50%;background:var(--light);color:var(--dark);border:none;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;}
+.chat-attach:hover{background:var(--border);}
 .chat-send-area input{flex:1;padding:9px 13px;border:1px solid var(--border);border-radius:20px;font-size:13px;outline:none;}
 .chat-send-area input:focus{border-color:var(--rose);}
 .chat-send-area button{padding:9px 17px;background:var(--rose);color:#fff;border:none;border-radius:20px;cursor:pointer;font-size:13px;}
@@ -225,10 +227,17 @@ async function loadAppointments(){
       <option value="confirmed" ${a.status==="confirmed"?"selected":""}>Confirmed</option>
       <option value="done" ${a.status==="done"?"selected":""}>Done</option>
       <option value="cancelled" ${a.status==="cancelled"?"selected":""}>Cancelled</option>
-    </select></td></tr>`).join("");
+    </select>
+    ${a.status==="cancelled"&&a.cancel_reason?`<div style="font-size:10px;color:#a32d2d;margin-top:4px;">Reason: ${a.cancel_reason}</div>`:""}
+    </td></tr>`).join("");
 }
 async function updateStatus(id,status){
-  await fetch("/api/admin/appointments/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+  let reason="";
+  if(status==="cancelled"){
+    reason=prompt("Please enter a reason for cancelling this reservation:");
+    if(reason===null){loadAppointments();return;}
+  }
+  await fetch("/api/admin/appointments/"+id+"/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,reason})});
   loadAppointments();
 }
 
@@ -379,6 +388,8 @@ async function openSession(sid,name,phone){
     <div class="chat-panel-header"><h3 style="font-size:14px;">${name}</h3><p style="font-size:11px;color:var(--mid);">${phone||"No phone"}</p></div>
     <div class="chat-msgs" id="adminMsgs"></div>
     <div class="chat-send-area">
+      <button class="chat-attach" type="button" title="Send a photo" onclick="document.getElementById('adminImageInput').click()">📷</button>
+      <input type="file" id="adminImageInput" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="if(this.files[0])sendAdminImage(this.files[0]);this.value='';">
       <input type="text" id="adminInput" placeholder="Reply to ${name}..." onkeydown="if(event.key==='Enter')adminSend()">
       <button onclick="adminSend()">Send</button>
     </div>`;
@@ -397,6 +408,16 @@ function adminSend(){
   const input=document.getElementById("adminInput");const msg=input.value.trim();
   if(!msg||!activeSession||!socket)return;
   socket.emit("send_message",{session_id:activeSession,sender:"admin",message:msg});input.value="";
+}
+async function sendAdminImage(file){
+  if(!activeSession||!socket){alert("Select a customer first.");return;}
+  const fd=new FormData();fd.append("file",file);
+  try{
+    const res=await fetch("/api/chat/upload-image",{method:"POST",body:fd});
+    const json=await res.json();
+    if(json.success)socket.emit("send_message",{session_id:activeSession,sender:"admin",message:"[[img]]"+json.image_url});
+    else alert(json.error||"Upload failed. Please try again.");
+  }catch(e){alert("Upload failed. Please try again.");}
 }
 async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
 initSocket();loadAppointments();
