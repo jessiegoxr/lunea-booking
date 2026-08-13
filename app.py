@@ -236,6 +236,8 @@ def update_appt_status(aid):
         socketio.emit('appointment_status_changed',{
             'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
         }, room='appt_notify_'+row['phone'])
+    if status == 'done' and row:
+        socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':False})
     return jsonify({'success':True})
 
 @app.route('/api/admin/designs')
@@ -427,14 +429,20 @@ def save_availability():
         (d['date'],d['time'],d.get('is_available',True),d.get('note',''),
          d.get('is_available',True),d.get('note','')))
     conn.commit(); cur.close(); conn.close()
+    socketio.emit('availability_changed',{'date':d['date'],'time':d['time'],'is_available':d.get('is_available',True)})
     return jsonify({'success':True})
 
 @app.route('/api/admin/availability/<int:aid>', methods=['DELETE'])
 def delete_availability(aid):
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('DELETE FROM availability WHERE id=%s',(aid,))
-    conn.commit(); cur.close(); conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT date,time FROM availability WHERE id=%s',(aid,))
+    row = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute('DELETE FROM availability WHERE id=%s',(aid,))
+    conn.commit(); cur.close(); cur2.close(); conn.close()
+    if row:
+        socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':False})
     return jsonify({'success':True})
 
 @app.route('/api/availability/open')
