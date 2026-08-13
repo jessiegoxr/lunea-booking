@@ -226,16 +226,16 @@ def update_appt_status(aid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE appointments SET status=%s,cancel_reason=%s WHERE id=%s',(status,reason,aid))
     cur2 = dict_cursor(conn)
-    cur2.execute('SELECT phone,service,date,time FROM appointments WHERE id=%s',(aid,))
+    cur2.execute('SELECT phone,service,date,time,customer_email FROM appointments WHERE id=%s',(aid,))
     row = cur2.fetchone()
     if status == 'done' and row:
         cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,FALSE,'')
             ON CONFLICT (date,time) DO UPDATE SET is_available=FALSE''',(row['date'],row['time']))
     conn.commit(); cur.close(); cur2.close(); conn.close()
-    if row and row['phone']:
+    if row and row['customer_email']:
         socketio.emit('appointment_status_changed',{
             'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
-        }, room='appt_notify_'+row['phone'])
+        }, room='customer_'+row['customer_email'])
     if status == 'done' and row:
         socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':False})
     return jsonify({'success':True})
@@ -354,11 +354,11 @@ def join_design_notify(data):
     if phone:
         join_room('design_notify_'+phone)
 
-@socketio.on('join_appt_notify')
-def join_appt_notify(data):
-    phone = data.get('phone','')
-    if phone:
-        join_room('appt_notify_'+phone)
+@socketio.on('join_customer_room')
+def join_customer_room():
+    email = session.get('customer_email','')
+    if email:
+        join_room('customer_'+email)
 
 @app.route('/api/signup', methods=['POST'])
 def customer_signup():
