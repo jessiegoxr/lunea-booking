@@ -447,7 +447,11 @@ async function submitBooking(){
   const res=await fetch('/api/book',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   const json=await res.json();btn.disabled=false;btn.textContent='CONFIRM APPOINTMENT 确认预约';
   if(json.success){document.getElementById('bookSuccess').style.display='block';['bookName','bookPhone','bookNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('bookService').value='';document.getElementById('bookDate').value='';document.getElementById('bookTime').value='';loadMyReservations();}
-  else{const el=document.getElementById('bookError');el.textContent=json.error;el.style.display='block';}
+  else{
+    const el=document.getElementById('bookError');el.textContent=json.error;el.style.display='block';
+    await refreshAvailabilityPanel();
+    if(data.date)loadTimesForDate(data.date);
+  }
 }
 const RSV_BADGE={pending:'rsv-badge-pending',confirmed:'rsv-badge-confirmed',done:'rsv-badge-done',cancelled:'rsv-badge-cancelled'};
 const RSV_LABEL={pending:'⏳ Pending',confirmed:'✓ Confirmed',done:'✓ Done',cancelled:'✕ Cancelled'};
@@ -519,6 +523,12 @@ function initSocket(){
     document.getElementById('apptNotifyMsg').textContent=msg;
     document.getElementById('apptNotify').style.display='block';
     loadMyReservations();
+  });
+  socket.on('availability_changed',async data=>{
+    await refreshAvailabilityPanel();
+    const bd=document.getElementById('bookDate').value;
+    if(bd===data.date)loadTimesForDate(bd);
+    if(availCalY!==undefined)loadAvailCalData();
   });
 }
 initSocket();
