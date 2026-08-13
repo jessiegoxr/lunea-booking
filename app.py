@@ -83,6 +83,18 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW())''')
     cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS customer_email TEXT")
     cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''")
+    # Backfill records uploaded/booked before account linking existed, matching on name+phone
+    # (only when that combination maps to exactly one account, to avoid misattributing data).
+    cur.execute('''UPDATE design_uploads du SET customer_email = c.email
+        FROM customers c
+        WHERE (du.customer_email IS NULL OR du.customer_email = '')
+        AND du.customer_name = c.name AND du.phone = c.phone
+        AND (SELECT COUNT(*) FROM customers c2 WHERE c2.name = du.customer_name AND c2.phone = du.phone) = 1''')
+    cur.execute('''UPDATE appointments a SET customer_email = c.email
+        FROM customers c
+        WHERE (a.customer_email IS NULL OR a.customer_email = '')
+        AND a.name = c.name AND a.phone = c.phone
+        AND (SELECT COUNT(*) FROM customers c2 WHERE c2.name = a.name AND c2.phone = a.phone) = 1''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -152,8 +164,10 @@ def book_appointment():
     cur2 = conn.cursor()
     cur2.execute('INSERT INTO appointments (name,phone,service,date,time,notes,customer_email) VALUES (%s,%s,%s,%s,%s,%s,%s)',
         (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes',''),session.get('customer_email','')))
+    cur2.execute('UPDATE availability SET is_available=FALSE WHERE date=%s AND time=%s',(d['date'],d['time']))
     conn.commit(); cur.close(); cur2.close(); conn.close()
     socketio.emit('new_appointment',{'name':d['name'],'service':d['service'],'date':d['date']},room='admin')
+    socketio.emit('availability_changed',{'date':d['date'],'time':d['time'],'is_available':False})
     return jsonify({'success':True})
 
 @app.route('/api/upload-design', methods=['POST'])
@@ -231,13 +245,15 @@ def update_appt_status(aid):
     if status == 'done' and row:
         cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,FALSE,'')
             ON CONFLICT (date,time) DO UPDATE SET is_available=FALSE''',(row['date'],row['time']))
+    elif status == 'cancelled' and row:
+        cur.execute('UPDATE availability SET is_available=TRUE WHERE date=%s AND time=%s',(row['date'],row['time']))
     conn.commit(); cur.close(); cur2.close(); conn.close()
     if row and row['customer_email']:
         socketio.emit('appointment_status_changed',{
             'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
         }, room='customer_'+row['customer_email'])
-    if status == 'done' and row:
-        socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':False})
+    if status in ('done','cancelled') and row:
+        socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':status=='cancelled'})
     return jsonify({'success':True})
 
 @app.route('/api/admin/designs')
