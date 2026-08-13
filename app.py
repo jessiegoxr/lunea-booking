@@ -81,6 +81,8 @@ def init_db():
     cur.execute('''CREATE TABLE IF NOT EXISTS chat_images (
         id SERIAL PRIMARY KEY, data BYTEA NOT NULL, content_type TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS customer_email TEXT")
+    cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''")
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -141,10 +143,16 @@ def book_appointment():
     d = request.json or {}
     if not all(d.get(f) for f in ['name','phone','service','date','time']):
         return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('INSERT INTO appointments (name,phone,service,date,time,notes) VALUES (%s,%s,%s,%s,%s,%s)',
-        (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes','')))
-    conn.commit(); cur.close(); conn.close()
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT is_available FROM availability WHERE date=%s AND time=%s',(d['date'],d['time']))
+    slot = cur.fetchone()
+    if not slot or not slot['is_available']:
+        cur.close(); conn.close()
+        return jsonify({'success':False,'error':'This time slot has just been closed. Please choose another time.'}), 409
+    cur2 = conn.cursor()
+    cur2.execute('INSERT INTO appointments (name,phone,service,date,time,notes,customer_email) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+        (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes',''),session.get('customer_email','')))
+    conn.commit(); cur.close(); cur2.close(); conn.close()
     socketio.emit('new_appointment',{'name':d['name'],'service':d['service'],'date':d['date']},room='admin')
     return jsonify({'success':True})
 
@@ -212,9 +220,22 @@ def get_appointments():
 @app.route('/api/admin/appointments/<int:aid>/status', methods=['POST'])
 def update_appt_status(aid):
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    status = d.get('status')
+    reason = d.get('reason','') if status == 'cancelled' else ''
     conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE appointments SET status=%s WHERE id=%s',(request.json.get('status'),aid))
-    conn.commit(); cur.close(); conn.close()
+    cur.execute('UPDATE appointments SET status=%s,cancel_reason=%s WHERE id=%s',(status,reason,aid))
+    cur2 = dict_cursor(conn)
+    cur2.execute('SELECT phone,service,date,time FROM appointments WHERE id=%s',(aid,))
+    row = cur2.fetchone()
+    if status == 'done' and row:
+        cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,FALSE,'')
+            ON CONFLICT (date,time) DO UPDATE SET is_available=FALSE''',(row['date'],row['time']))
+    conn.commit(); cur.close(); cur2.close(); conn.close()
+    if row and row['phone']:
+        socketio.emit('appointment_status_changed',{
+            'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
+        }, room='appt_notify_'+row['phone'])
     return jsonify({'success':True})
 
 @app.route('/api/admin/designs')
@@ -331,6 +352,12 @@ def join_design_notify(data):
     if phone:
         join_room('design_notify_'+phone)
 
+@socketio.on('join_appt_notify')
+def join_appt_notify(data):
+    phone = data.get('phone','')
+    if phone:
+        join_room('appt_notify_'+phone)
+
 @app.route('/api/signup', methods=['POST'])
 def customer_signup():
     d = request.json or {}
@@ -439,6 +466,14 @@ def get_customer_designs():
     cur.execute('''SELECT id,customer_name,phone,filename,original_name,ai_analysis,price_estimate,
         admin_note,admin_price,created_at,customer_email FROM design_uploads
         WHERE customer_email=%s ORDER BY created_at DESC''',(session['customer_email'],))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/customer/appointments')
+def get_customer_appointments():
+    if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT * FROM appointments WHERE customer_email=%s ORDER BY created_at DESC',(session['customer_email'],))
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
