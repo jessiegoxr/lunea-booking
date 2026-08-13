@@ -36,6 +36,10 @@ body{font-family:"Segoe UI",sans-serif;background:#f0ebe4;color:var(--dark);}
 .stat-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;}
 .stat-num{font-size:30px;font-family:Georgia,serif;color:var(--rose);}
 .stat-label{font-size:10px;letter-spacing:2px;color:var(--mid);margin-top:4px;}
+.appt-toolbar{display:flex;gap:10px;margin-bottom:14px;}
+.appt-toolbar input{flex:1;padding:9px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:#fff;}
+.appt-toolbar input:focus{border-color:var(--rose);}
+.appt-toolbar select{padding:9px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff;cursor:pointer;}
 table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;}
 th{background:var(--light);padding:11px 14px;font-size:10px;letter-spacing:2px;color:var(--mid);text-align:left;}
 td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;}
@@ -146,6 +150,16 @@ async function login(){
           <div class="stat-card"><div class="stat-num" id="statPending">0</div><div class="stat-label">PENDING</div></div>
           <div class="stat-card"><div class="stat-num" id="statConfirmed">0</div><div class="stat-label">CONFIRMED</div></div>
         </div>
+        <div class="appt-toolbar">
+          <input type="text" id="apptSearch" placeholder="Search by name or phone..." oninput="renderAppointments()">
+          <select id="apptSort" onchange="renderAppointments()">
+            <option value="">Sort by: Date</option>
+            <option value="pending">Sort by: Status — Pending first</option>
+            <option value="confirmed">Sort by: Status — Confirmed first</option>
+            <option value="done">Sort by: Status — Done first</option>
+            <option value="cancelled">Sort by: Status — Cancelled first</option>
+          </select>
+        </div>
         <table><thead><tr><th>DATE & TIME</th><th>NAME</th><th>PHONE</th><th>SERVICE</th><th>NOTES</th><th>STATUS</th></tr></thead>
         <tbody id="apptBody"></tbody></table>
       </div>
@@ -212,11 +226,25 @@ function showTab(name){
 }
 
 /* ── Appointments ── */
+let allAppointments=[];
 async function loadAppointments(){
-  const data=await fetch("/api/admin/appointments").then(r=>r.json());
-  document.getElementById("statTotal").textContent=data.length;
-  document.getElementById("statPending").textContent=data.filter(d=>d.status==="pending").length;
-  document.getElementById("statConfirmed").textContent=data.filter(d=>d.status==="confirmed").length;
+  allAppointments=await fetch("/api/admin/appointments").then(r=>r.json());
+  document.getElementById("statTotal").textContent=allAppointments.length;
+  document.getElementById("statPending").textContent=allAppointments.filter(d=>d.status==="pending").length;
+  document.getElementById("statConfirmed").textContent=allAppointments.filter(d=>d.status==="confirmed").length;
+  renderAppointments();
+}
+function renderAppointments(){
+  const q=document.getElementById("apptSearch").value.trim().toLowerCase();
+  const sortStatus=document.getElementById("apptSort").value;
+  let data=allAppointments.filter(a=>!q||a.name.toLowerCase().includes(q)||a.phone.toLowerCase().includes(q));
+  data=data.slice().sort((a,b)=>{
+    if(sortStatus){
+      const ap=a.status===sortStatus?0:1, bp=b.status===sortStatus?0:1;
+      if(ap!==bp)return ap-bp;
+    }
+    return a.date.localeCompare(b.date)||a.time.localeCompare(b.time);
+  });
   document.getElementById("apptBody").innerHTML=data.map(a=>`<tr>
     <td>${a.date}<br><small style="color:var(--mid)">${a.time}</small></td>
     <td>${a.name}</td><td>${a.phone}</td>
@@ -229,7 +257,7 @@ async function loadAppointments(){
       <option value="cancelled" ${a.status==="cancelled"?"selected":""}>Cancelled</option>
     </select>
     ${a.status==="cancelled"&&a.cancel_reason?`<div style="font-size:10px;color:#a32d2d;margin-top:4px;">Reason: ${a.cancel_reason}</div>`:""}
-    </td></tr>`).join("");
+    </td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:var(--mid);">No matching reservations.</td></tr>`;
 }
 async function updateStatus(id,status){
   let reason="";
@@ -400,7 +428,7 @@ function appendMsg(sender,message,time){
   const msgs=document.getElementById("adminMsgs");if(!msgs)return;
   const div=document.createElement("div");div.className="msg "+sender;
   const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
-  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,"<br>");
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)" onerror="this.outerHTML='<span style=&quot;font-size:12px;opacity:.7;&quot;>📷 Photo unavailable</span>'">`:message.replace(/\n/g,"<br>");
   div.innerHTML=body+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
   msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
 }

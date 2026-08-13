@@ -368,27 +368,16 @@ function showSection(name) {
   if(name==='chat'){document.getElementById('chatBadge').classList.remove('show');}
   if(name==='availability')initAvailCalendar();
 }
-const availabilityCache = {};
-
-async function loadAvailability(startDate, endDate){
-  const url = `/api/availability?start=${startDate}&end=${endDate}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  const grouped = {};
-  data.forEach(slot => {
-    if (!grouped[slot.date]) grouped[slot.date] = [];
-    grouped[slot.date].push(slot.time);
-  });
-  return grouped;
-}
-
 document.getElementById('bookDate').min = new Date().toISOString().split('T')[0];
 document.getElementById('bookDate').addEventListener('change', () => loadTimesForDate(document.getElementById('bookDate').value));
 
 async function loadTimesForDate(date){
   if (!date) return;
-  const times = availabilityCache[date] || [];
   const timeSelect = document.getElementById('bookTime');
+  timeSelect.innerHTML = '<option value="">Loading...</option>';
+  const res = await fetch(`/api/availability?start=${date}&end=${date}`);
+  const slots = await res.json();
+  const times = slots.map(s => s.time);
   timeSelect.innerHTML = '<option value="">-- Select --</option>';
   if (times.length === 0) {
     timeSelect.innerHTML = '<option value="">No times available</option>';
@@ -399,13 +388,6 @@ async function loadTimesForDate(date){
   times.forEach(t => timeSelect.insertAdjacentHTML('beforeend', `<option>${t}</option>`));
   document.getElementById('bookAvailabilityNotice').style.display = 'block';
   document.getElementById('bookAvailabilityText').textContent = `可选时段：${times.join('，')}`;
-}
-
-async function refreshAvailabilityPanel(){
-  const today = new Date().toISOString().split('T')[0];
-  const end = new Date(new Date().setDate(new Date().getDate() + 14)).toISOString().split('T')[0];
-  const grouped = await loadAvailability(today, end);
-  Object.assign(availabilityCache, grouped);
 }
 
 /* ── Availability calendar (read-only, mirrors admin's calendar; shows only manager-opened slots) ── */
@@ -462,7 +444,6 @@ async function submitBooking(){
   if(json.success){document.getElementById('bookSuccess').style.display='block';['bookName','bookPhone','bookNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('bookService').value='';document.getElementById('bookDate').value='';document.getElementById('bookTime').value='';loadMyReservations();setTimeout(()=>toggleBookForm(false),1200);}
   else{
     const el=document.getElementById('bookError');el.textContent=json.error;el.style.display='block';
-    await refreshAvailabilityPanel();
     if(data.date)loadTimesForDate(data.date);
   }
 }
@@ -540,8 +521,7 @@ function initSocket(){
     document.getElementById('apptNotify').style.display='block';
     loadMyReservations();
   });
-  socket.on('availability_changed',async data=>{
-    await refreshAvailabilityPanel();
+  socket.on('availability_changed',data=>{
     const bd=document.getElementById('bookDate').value;
     if(bd===data.date)loadTimesForDate(bd);
     if(availCalY!==undefined)loadAvailCalData();
@@ -567,7 +547,7 @@ async function loadHistory(){
 function appendMsg(sender,message,time){
   const div=document.createElement('div');div.className='msg '+sender;
   const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
-  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)">`:message.replace(/\n/g,'<br>');
+  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)" onerror="this.outerHTML='<span style=&quot;font-size:12px;opacity:.7;&quot;>📷 Photo unavailable</span>'">`:message.replace(/\n/g,'<br>');
   div.innerHTML=body+`<div class="msg-time">${time?time.split(' ')[1]||time:''}</div>`;
   const c=document.getElementById('chatMessages');c.appendChild(div);c.scrollTop=c.scrollHeight;
 }
@@ -586,7 +566,7 @@ async function sendChatImage(file){
     else alert(json.error||'Upload failed. Please try again.');
   }catch(e){alert('Upload failed. Please try again.');}
 }
-window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;initSocket();}refreshAvailabilityPanel();});
+window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;if(!socket)initSocket();}});
 </script>
 {% endif %}
 </body>
