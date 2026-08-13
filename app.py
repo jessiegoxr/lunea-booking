@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response
 from flask_socketio import SocketIO, emit, join_room
 import psycopg2, psycopg2.extras
 import os, uuid, base64
@@ -12,6 +12,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+EXT_MIME = {'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lunea2026')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
@@ -75,6 +76,11 @@ def init_db():
         is_available BOOLEAN DEFAULT TRUE, note TEXT DEFAULT '',
         UNIQUE(date,time))''')
     cur.execute("ALTER TABLE design_uploads ADD COLUMN IF NOT EXISTS customer_email TEXT")
+    cur.execute("ALTER TABLE design_uploads ADD COLUMN IF NOT EXISTS image_data BYTEA")
+    cur.execute("ALTER TABLE design_uploads ADD COLUMN IF NOT EXISTS content_type TEXT")
+    cur.execute('''CREATE TABLE IF NOT EXISTS chat_images (
+        id SERIAL PRIMARY KEY, data BYTEA NOT NULL, content_type TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW())''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -82,17 +88,13 @@ init_db()
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def analyze_nail_design(image_path, original_filename):
+def analyze_nail_design(image_bytes, media_type):
     if not ANTHROPIC_API_KEY:
         return {'analysis': '⚠️ AI key not configured. Admin will review manually.', 'price_estimate': 'Pending review'}
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        with open(image_path, 'rb') as f:
-            image_data = base64.standard_b64encode(f.read()).decode('utf-8')
-        ext = original_filename.rsplit('.', 1)[1].lower()
-        mt = {'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}
-        media_type = mt.get(ext, 'image/jpeg')
+        image_data = base64.standard_b64encode(image_bytes).decode('utf-8')
         response = client.messages.create(
             model='claude-haiku-4-5-20251001', max_tokens=600,
             messages=[{'role':'user','content':[
@@ -158,15 +160,28 @@ def upload_design():
         return jsonify({'success':False,'error':'Please upload JPG/PNG/WEBP image.'}), 400
     original_name = secure_filename(file.filename)
     filename = f"{uuid.uuid4().hex}_{original_name}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-    result = analyze_nail_design(filepath, original_name)
+    content_type = EXT_MIME.get(original_name.rsplit('.',1)[1].lower(), 'image/jpeg')
+    image_bytes = file.read()
+    result = analyze_nail_design(image_bytes, content_type)
     conn = get_db(); cur = conn.cursor()
-    cur.execute('INSERT INTO design_uploads (customer_name,phone,filename,original_name,ai_analysis,price_estimate,customer_email) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-        (name,phone,filename,original_name,result['analysis'],result['price_estimate'],customer_email))
+    cur.execute('''INSERT INTO design_uploads
+        (customer_name,phone,filename,original_name,ai_analysis,price_estimate,customer_email,image_data,content_type)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+        (name,phone,filename,original_name,result['analysis'],result['price_estimate'],customer_email,
+         psycopg2.Binary(image_bytes),content_type))
+    new_id = cur.fetchone()[0]
     conn.commit(); cur.close(); conn.close()
     socketio.emit('new_design',{'name':name,'price':result['price_estimate']},room='admin')
-    return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/uploads/{filename}'})
+    return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/design-image/{new_id}'})
+
+@app.route('/design-image/<int:did>')
+def design_image(did):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT image_data, content_type FROM design_uploads WHERE id=%s',(did,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not row[0]:
+        return '', 404
+    return Response(bytes(row[0]), mimetype=row[1] or 'image/jpeg')
 
 @app.route('/admin')
 def admin_page():
@@ -206,7 +221,8 @@ def update_appt_status(aid):
 def get_designs():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
     conn = get_db(); cur = dict_cursor(conn)
-    cur.execute('SELECT * FROM design_uploads ORDER BY created_at DESC')
+    cur.execute('''SELECT id,customer_name,phone,filename,original_name,ai_analysis,price_estimate,
+        admin_note,admin_price,created_at,customer_email FROM design_uploads ORDER BY created_at DESC''')
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
@@ -251,11 +267,23 @@ def upload_chat_image():
     file = request.files['file']
     if not file or not allowed_file(file.filename):
         return jsonify({'success':False,'error':'Please upload JPG/PNG/WEBP image.'}), 400
-    original_name = secure_filename(file.filename)
-    filename = f"{uuid.uuid4().hex}_{original_name}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-    return jsonify({'success':True,'image_url':f'/uploads/{filename}'})
+    content_type = EXT_MIME.get(file.filename.rsplit('.',1)[1].lower(), 'image/jpeg')
+    image_bytes = file.read()
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO chat_images (data,content_type) VALUES (%s,%s) RETURNING id',
+        (psycopg2.Binary(image_bytes),content_type))
+    new_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True,'image_url':f'/chat-image/{new_id}'})
+
+@app.route('/chat-image/<int:iid>')
+def chat_image(iid):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT data, content_type FROM chat_images WHERE id=%s',(iid,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row:
+        return '', 404
+    return Response(bytes(row[0]), mimetype=row[1])
 
 @socketio.on('join')
 def on_join(data):
@@ -393,7 +421,9 @@ def get_open_slots():
 def get_customer_designs():
     if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
     conn = get_db(); cur = dict_cursor(conn)
-    cur.execute('SELECT * FROM design_uploads WHERE customer_email=%s ORDER BY created_at DESC',(session['customer_email'],))
+    cur.execute('''SELECT id,customer_name,phone,filename,original_name,ai_analysis,price_estimate,
+        admin_note,admin_price,created_at,customer_email FROM design_uploads
+        WHERE customer_email=%s ORDER BY created_at DESC''',(session['customer_email'],))
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
