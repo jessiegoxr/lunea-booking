@@ -417,6 +417,21 @@ def get_open_slots():
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/availability')
+def get_public_availability():
+    month = request.args.get('month','')
+    start = request.args.get('start','')
+    end = request.args.get('end','')
+    conn = get_db(); cur = dict_cursor(conn)
+    if month:
+        cur.execute("SELECT date,time,note FROM availability WHERE is_available=TRUE AND date LIKE %s ORDER BY date,time",(month+'%',))
+    elif start and end:
+        cur.execute("SELECT date,time,note FROM availability WHERE is_available=TRUE AND date BETWEEN %s AND %s ORDER BY date,time",(start,end))
+    else:
+        cur.execute("SELECT date,time,note FROM availability WHERE is_available=TRUE AND date >= CURRENT_DATE::TEXT ORDER BY date,time")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
 @app.route('/api/customer/designs')
 def get_customer_designs():
     if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
