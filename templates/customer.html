@@ -380,7 +380,7 @@ async function loadMyDesigns(){
   const list=document.getElementById('myDesignsList');
   const rows=await fetch('/api/customer/designs').then(r=>r.json());
   list.innerHTML=rows.map(d=>`<div class="design-card">
-      <img src="/uploads/${d.filename}" alt="Design">
+      <img src="/design-image/${d.id}" alt="Design">
       <div class="design-card-body">
         <div class="design-card-date">${d.created_at}</div>
         ${d.admin_price?`<div class="design-status-done">✓ ${d.admin_price}${d.admin_note?' — '+d.admin_note:''}</div>`

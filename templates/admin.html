@@ -325,7 +325,7 @@ function calNext(){calM++;if(calM>11){calM=0;calY++;}calSelDate=null;loadCalData
 async function loadDesigns(){
   const data=await fetch("/api/admin/designs").then(r=>r.json());
   document.getElementById("designGrid").innerHTML=data.map(d=>`<div class="design-card">
-    <img src="/uploads/${d.filename}" onerror="this.style.display='none'">
+    <img src="/design-image/${d.id}" onerror="this.style.display='none'">
     <div class="design-card-body">
       <div class="design-card-name">${d.customer_name}</div>
       <div class="design-card-phone">${d.phone||"No phone"} · ${d.created_at}</div>
