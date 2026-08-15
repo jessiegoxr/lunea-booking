@@ -47,11 +47,12 @@ tr:last-child td{border-bottom:none;}
 select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;cursor:pointer;}
 .design-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;}
 .design-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
-.design-card img{width:100%;height:170px;object-fit:cover;}
+.design-card img{width:100%;height:170px;object-fit:cover;display:block;}
+.img-download{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:14px;}
+.img-download:hover{background:rgba(0,0,0,.8);}
 .design-card-body{padding:13px;}
 .design-card-name{font-size:13px;font-weight:600;margin-bottom:2px;}
 .design-card-phone{font-size:11px;color:var(--mid);margin-bottom:8px;}
-.ai-box{background:var(--light);border-radius:8px;padding:9px;font-size:11px;color:var(--mid);line-height:1.6;white-space:pre-wrap;max-height:110px;overflow-y:auto;margin-bottom:9px;}
 .admin-review input{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:5px;}
 .admin-review button{width:100%;padding:6px;background:var(--rose);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;}
 .chat-layout{display:flex;height:calc(100vh - 130px);}
@@ -323,7 +324,7 @@ function renderAppointments(){
   document.getElementById("apptBody").innerHTML=data.map(a=>`<tr>
     <td>${a.date}<br><small style="color:var(--mid)">${a.time}</small></td>
     <td>${a.name}</td><td>${a.phone}</td>
-    <td style="font-size:12px">${a.service}</td>
+    <td style="font-size:12px">${a.service||"To be discussed"}</td>
     <td style="font-size:12px;color:var(--mid)">${a.notes||"–"}</td>
     <td><select class="status-sel" onchange="updateStatus(${a.id},this.value)">
       <option value="pending" ${a.status==="pending"?"selected":""}>Pending</option>
@@ -386,7 +387,7 @@ function renderUpcoming(){
   document.getElementById("upcomingList").innerHTML=up.length?up.map(a=>`<div class="ucard" style="border-left:3px solid ${col[a.status]||"#ccc"};background:var(--light);" onclick="calSelDate='${a.date}';renderMiniCal();renderDayView('${a.date}')">
     <div style="font-size:12px;font-weight:600;">${a.name}</div>
     <div style="font-size:10px;color:var(--mid);">${a.date} · ${a.time}</div>
-    <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service}</div>
+    <div style="font-size:10px;color:var(--mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${a.service||"To be discussed"}</div>
   </div>`).join(""):"<p style='font-size:12px;color:var(--mid);'>No upcoming appointments</p>";
 }
 function renderDayView(ds){
@@ -400,7 +401,7 @@ function renderDayView(ds){
     if(ap){
       block=`<div class="tblock tb-appt-${ap.status}">
         <div style="font-size:13px;font-weight:600;">${ap.name} <span style="font-size:10px;float:right;opacity:.7">${ap.status.toUpperCase()}</span></div>
-        <div style="font-size:11px;opacity:.8;">${ap.service}</div>
+        <div style="font-size:11px;opacity:.8;">${ap.service||"To be discussed"}</div>
         <div style="font-size:10px;opacity:.6;">${ap.phone}${ap.notes?" · "+ap.notes:""}</div>
       </div>`;
     } else if(sl&&sl.is_available){
@@ -439,12 +440,13 @@ function calNext(){calM++;if(calM>11){calM=0;calY++;}calSelDate=null;loadCalData
 async function loadDesigns(){
   const data=await fetch("/api/admin/designs").then(r=>r.json());
   document.getElementById("designGrid").innerHTML=data.map(d=>`<div class="design-card">
-    <img src="/design-image/${d.id}" onerror="this.style.display='none'">
+    <div style="position:relative;">
+      <img src="/design-image/${d.id}" onerror="this.style.display='none'">
+      <a class="img-download" href="/design-image/${d.id}?download=1" title="Download photo">⬇</a>
+    </div>
     <div class="design-card-body">
       <div class="design-card-name">${d.customer_name}</div>
       <div class="design-card-phone">${d.phone||"No phone"} · ${d.created_at}</div>
-      <div class="ai-box">🤖 ${d.ai_analysis||"–"}</div>
-      <div style="font-size:11px;color:var(--mid);margin-bottom:6px;">AI Estimate: <strong>${d.price_estimate||"–"}</strong></div>
       ${d.admin_price?`<div style="background:#eaf3de;color:#3b6d11;border-radius:6px;padding:8px;font-size:12px;">✓ ${d.admin_price} — ${d.admin_note}</div>`:`
       <div class="admin-review">
         <input type="text" id="price_${d.id}" placeholder="Your price e.g. RM95">
@@ -505,7 +507,10 @@ function appendMsg(sender,message,time){
   const msgs=document.getElementById("adminMsgs");if(!msgs)return;
   const div=document.createElement("div");div.className="msg "+sender;
   const imgMatch=/^\[\[img\]\](.+)$/.exec(message);
-  const body=imgMatch?`<img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)" onerror="this.outerHTML='<span style=&quot;font-size:12px;opacity:.7;&quot;>📷 Photo unavailable</span>'">`:message.replace(/\n/g,"<br>");
+  const body=imgMatch?`<div style="position:relative;display:inline-block;">
+      <img class="msg-img" src="${imgMatch[1]}" onclick="window.open(this.src)" onerror="this.parentElement.outerHTML='<span style=&quot;font-size:12px;opacity:.7;&quot;>📷 Photo unavailable</span>'">
+      <a class="img-download" href="${imgMatch[1]}?download=1" title="Download photo">⬇</a>
+    </div>`:message.replace(/\n/g,"<br>");
   div.innerHTML=body+`<div class="msg-time">${time?(time.split(" ")[1]||time):""}</div>`;
   msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
 }
