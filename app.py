@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response
 from flask_socketio import SocketIO, emit, join_room
 import psycopg2, psycopg2.extras
-import os, uuid, base64
+import os, uuid
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,7 +22,6 @@ def buffer_slots(time_str):
     idx = TIMES.index(time_str)
     return TIMES[idx:idx+BOOKING_BUFFER_SLOTS]
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lunea2026')
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -117,39 +116,6 @@ init_db()
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def analyze_nail_design(image_bytes, media_type):
-    if not ANTHROPIC_API_KEY:
-        return {'analysis': '⚠️ AI key not configured. Admin will review manually.', 'price_estimate': 'Pending review'}
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        image_data = base64.standard_b64encode(image_bytes).decode('utf-8')
-        response = client.messages.create(
-            model='claude-haiku-4-5-20251001', max_tokens=600,
-            messages=[{'role':'user','content':[
-                {'type':'image','source':{'type':'base64','media_type':media_type,'data':image_data}},
-                {'type':'text','text':'''You are a nail technician assistant for LUNÉA Nail Studio, Penang.
-Analyze this nail design and respond EXACTLY in this format:
-
-**款式复杂度 Complexity:** [Simple 简单 / Moderate 中等 / Complex 复杂]
-**技术 Techniques:** [list: gel, extension, cat eye, nail art, ombre, etc.]
-**估价 Estimated Price:** RM [amount or range]
-**说明 Notes:** [1-2 sentences describing the design in English & Chinese]
-
-Price reference:
-- Gel manicure single/ombre/cat eye: RM50
-- Gel manicure simple design: RM65
-- Gel manicure complex design: RM85
-- Nail extension single/ombre/cat eye: RM95
-- Nail extension simple design: RM115
-- Nail extension complex design: RM130
-- Accessories add-on: RM2-10'''}]}])
-        text = response.content[0].text
-        price_line = next((l for l in text.split('\n') if 'Estimated Price' in l or '估价' in l), '')
-        price = price_line.split(':',1)[-1].strip() if price_line else 'See analysis'
-        return {'analysis': text, 'price_estimate': price}
-    except Exception as e:
-        return {'analysis': f'Analysis error: {str(e)}', 'price_estimate': 'Contact us for quote'}
 
 @app.route('/')
 def customer_home():
@@ -168,7 +134,7 @@ def uploaded_file(filename):
 @app.route('/api/book', methods=['POST'])
 def book_appointment():
     d = request.json or {}
-    if not all(d.get(f) for f in ['name','phone','service','date','time']):
+    if not all(d.get(f) for f in ['name','phone','date','time']):
         return jsonify({'success':False,'error':'Please fill all required fields.'}), 400
     conn = get_db(); cur = dict_cursor(conn)
     cur.execute('SELECT is_available FROM availability WHERE date=%s AND time=%s',(d['date'],d['time']))
@@ -178,10 +144,10 @@ def book_appointment():
         return jsonify({'success':False,'error':'This time slot has just been closed. Please choose another time.'}), 409
     cur2 = conn.cursor()
     cur2.execute('INSERT INTO appointments (name,phone,service,date,time,notes,customer_email) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-        (d['name'],d['phone'],d['service'],d['date'],d['time'],d.get('notes',''),session.get('customer_email','')))
+        (d['name'],d['phone'],d.get('service',''),d['date'],d['time'],d.get('notes',''),session.get('customer_email','')))
     cur2.execute('UPDATE availability SET is_available=FALSE WHERE date=%s AND time=%s',(d['date'],d['time']))
     conn.commit(); cur.close(); cur2.close(); conn.close()
-    socketio.emit('new_appointment',{'name':d['name'],'service':d['service'],'date':d['date']},room='admin')
+    socketio.emit('new_appointment',{'name':d['name'],'date':d['date']},room='admin')
     socketio.emit('availability_changed',{'date':d['date'],'time':d['time'],'is_available':False})
     return jsonify({'success':True})
 
@@ -199,26 +165,28 @@ def upload_design():
     filename = f"{uuid.uuid4().hex}_{original_name}"
     content_type = EXT_MIME.get(original_name.rsplit('.',1)[1].lower(), 'image/jpeg')
     image_bytes = file.read()
-    result = analyze_nail_design(image_bytes, content_type)
     conn = get_db(); cur = conn.cursor()
     cur.execute('''INSERT INTO design_uploads
-        (customer_name,phone,filename,original_name,ai_analysis,price_estimate,customer_email,image_data,content_type)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
-        (name,phone,filename,original_name,result['analysis'],result['price_estimate'],customer_email,
+        (customer_name,phone,filename,original_name,customer_email,image_data,content_type)
+        VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+        (name,phone,filename,original_name,customer_email,
          psycopg2.Binary(image_bytes),content_type))
     new_id = cur.fetchone()[0]
     conn.commit(); cur.close(); conn.close()
-    socketio.emit('new_design',{'name':name,'price':result['price_estimate']},room='admin')
-    return jsonify({'success':True,'analysis':result['analysis'],'price_estimate':result['price_estimate'],'image_url':f'/design-image/{new_id}'})
+    socketio.emit('new_design',{'name':name},room='admin')
+    return jsonify({'success':True,'image_url':f'/design-image/{new_id}'})
 
 @app.route('/design-image/<int:did>')
 def design_image(did):
     conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT image_data, content_type FROM design_uploads WHERE id=%s',(did,))
+    cur.execute('SELECT image_data, content_type, original_name FROM design_uploads WHERE id=%s',(did,))
     row = cur.fetchone(); cur.close(); conn.close()
     if not row or not row[0]:
         return '', 404
-    return Response(bytes(row[0]), mimetype=row[1] or 'image/jpeg')
+    resp = Response(bytes(row[0]), mimetype=row[1] or 'image/jpeg')
+    if request.args.get('download'):
+        resp.headers['Content-Disposition'] = f'attachment; filename="{row[2] or f"design-{did}.jpg"}"'
+    return resp
 
 @app.route('/admin')
 def admin_page():
@@ -400,7 +368,11 @@ def chat_image(iid):
     row = cur.fetchone(); cur.close(); conn.close()
     if not row:
         return '', 404
-    return Response(bytes(row[0]), mimetype=row[1])
+    resp = Response(bytes(row[0]), mimetype=row[1])
+    if request.args.get('download'):
+        ext = (row[1] or 'image/jpeg').split('/')[-1]
+        resp.headers['Content-Disposition'] = f'attachment; filename="chat-photo-{iid}.{ext}"'
+    return resp
 
 @socketio.on('join')
 def on_join(data):

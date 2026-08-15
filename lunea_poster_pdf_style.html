@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #2a2a2a; display: flex; justify-content: center; padding: 20px; font-family: 'Cormorant Garamond', serif; }
+
+.poster {
+  width: 420px;
+  height: 560px;
+  background: #ffffff;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 26px 26px 14px;
+  overflow: hidden;
+}
+
+.corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: #c2a882;
+  border-style: solid;
+}
+.corner-tl { top: 12px; left: 12px; border-width: 1.5px 0 0 1.5px; }
+.corner-tr { top: 12px; right: 12px; border-width: 1.5px 1.5px 0 0; }
+.corner-bl { bottom: 12px; left: 12px; border-width: 0 0 1.5px 1.5px; }
+.corner-br { bottom: 12px; right: 12px; border-width: 0 1.5px 1.5px 0; }
+
+.header { text-align: center; margin-bottom: 10px; }
+.moons { font-size: 12px; letter-spacing: 10px; margin-bottom: 4px; }
+.brand { font-size: 30px; font-weight: 300; letter-spacing: 14px; color: #1a1108; line-height: 1; margin-bottom: 4px; }
+.sub { font-size: 7.5px; letter-spacing: 4px; color: #8a7060; text-transform: uppercase; margin-bottom: 5px; }
+.diamond { color: #c2a882; font-size: 10px; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; flex: 1; margin-bottom: 6px; }
+
+.section-header { font-size: 10.5px; font-weight: 400; color: #8a7060; letter-spacing: 0.5px; border-bottom: 1px solid #ddd0c0; padding-bottom: 5px; margin-bottom: 5px; }
+.section-header em { font-style: italic; }
+
+.item { display: flex; justify-content: space-between; align-items: flex-start; padding: 4.5px 0; border-bottom: 1px dashed #ddd0c0; }
+.item:last-child { border-bottom: none; }
+
+.cn { font-size: 11px; font-weight: 600; color: #1a1108; line-height: 1.25; }
+.en { font-size: 8px; color: #8a7060; line-height: 1.3; }
+.price { font-size: 11px; color: #1a1108; white-space: nowrap; padding-left: 5px; padding-top: 1px; flex-shrink: 0; }
+
+.bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; border-top: 1px solid #ddd0c0; padding-top: 7px; margin-bottom: 8px; }
+
+.footer { border-top: 1px solid #e8dcd0; padding-top: 6px; text-align: center; }
+.footer-note { font-size: 6.8px; color: #9a8070; line-height: 1.6; letter-spacing: 0.2px; }
+.footer-dot { color: #c2a882; font-size: 9px; letter-spacing: 6px; margin: 4px 0 2px; }
+.footer-dm { font-size: 7px; letter-spacing: 2.5px; color: #8a7060; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div class="header">
+    <div class="moons">🌙 ✦ 🌙</div>
+    <div class="brand">L U N É A</div>
+    <div class="sub">N A I L &nbsp; S T U D I O &nbsp; · &nbsp; P E N A N G</div>
+    <div class="diamond">◆</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="section-header">本甲 · <em>Manicure</em></div>
+      <div class="item">
+        <div><div class="cn">单色</div><div class="en">Single Color</div></div>
+        <div class="price">RM 58</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">跳色 / 猫眼</div><div class="en">Ombre / Cat Eye</div></div>
+        <div class="price">RM 68</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">简单款式</div><div class="en">Simple Design</div></div>
+        <div class="price">RM 98</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">复杂款式</div><div class="en">Complex Design</div></div>
+        <div class="price">RM 108–138</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-header">延长 · <em>Nail Extension</em></div>
+      <div class="item">
+        <div><div class="cn">单色 / 跳色 / 猫眼</div><div class="en">Single / Ombre / Cat Eye</div></div>
+        <div class="price">RM 108</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">简单款式</div><div class="en">Simple Design</div></div>
+        <div class="price">RM 138</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">复杂款式</div><div class="en">Complex Design</div></div>
+        <div class="price">RM 158–208</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div>
+      <div class="section-header">卸甲 · <em>Removal</em></div>
+      <div class="item">
+        <div><div class="cn">卸本甲</div><div class="en">Gel Removal</div></div>
+        <div class="price">RM 15</div>
+      </div>
+      <div class="item">
+        <div><div class="cn">卸延甲</div><div class="en">Extension Removal</div></div>
+        <div class="price">RM 25</div>
+      </div>
+    </div>
+    <div>
+      <div class="section-header">其他 · <em>Others</em></div>
+      <div class="item">
+        <div><div class="cn">单甲附加</div><div class="en">Add-on / nail</div></div>
+        <div class="price">RM 8</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-note">✦ 所有款式已包含建构 & 前置处理 · All prices include base structure & prep ✦ 预约请提前发送参考图，避免因材料未准备影响时间 ✦</div>
+    <div class="footer-dot">· ✦ ·</div>
+    <div class="footer-dm">D M &nbsp; T O &nbsp; B O O K &nbsp;·&nbsp; P E N A N G &nbsp;·&nbsp; @ l u n e a . n a i l _ s t u d i o</div>
+  </div>
+</div>
+</body>
+</html>
