@@ -77,6 +77,10 @@ textarea { resize:vertical; min-height:80px; }
 .rsv-badge-done { background:#e6f1fb; color:#2266a0; }
 .rsv-badge-cancelled { background:#fcebeb; color:#a32d2d; }
 .rsv-rebook-btn { margin-top:4px; padding:4px 12px; background:var(--rose); color:#fff; border:none; border-radius:20px; font-size:11px; cursor:pointer; }
+.ann-item { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; }
+.ann-item-title { font-size:14px; font-weight:600; color:var(--dark); margin-bottom:4px; }
+.ann-item-content { font-size:13px; color:var(--mid); line-height:1.6; white-space:pre-wrap; }
+.ann-item-date { font-size:11px; color:#b09080; margin-top:8px; }
 .rsv-table-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
 .btn-sm { width:auto; padding:9px 18px; font-size:12px; }
 table.rsv-table { width:100%; border-collapse:collapse; background:var(--white); border-radius:12px; overflow:hidden; border:1px solid var(--border); }
@@ -222,6 +226,7 @@ async function submitAuth(){
   <div class="nav-inner">
     <div class="nav-brand">LUNÉA</div>
     <div class="nav-tabs">
+      <button class="nav-tab" onclick="showSection('dashboard')">公告</button>
       <button class="nav-tab active" onclick="showSection('book')">预约</button>
       <button class="nav-tab" onclick="showSection('availability')">可预约时间</button>
       <button class="nav-tab" onclick="showSection('design')">设计报价</button>
@@ -233,6 +238,50 @@ async function submitAuth(){
     </div>
   </div>
 </nav>
+<div class="section" id="section-dashboard">
+  <div class="page-header"><h1>LUNÉA</h1><p>公告 · DASHBOARD</p></div>
+
+  <div id="annSection-promotion" style="display:none;">
+    <div class="divider"><div class="divider-line"></div><div class="divider-text">🎉 优惠 · Promotions</div><div class="divider-line"></div></div>
+    <div id="annList-promotion"></div>
+  </div>
+
+  <div id="annSection-event" style="display:none;">
+    <div class="divider" style="margin-top:28px;"><div class="divider-line"></div><div class="divider-text">📅 活动 · Events</div><div class="divider-line"></div></div>
+    <div id="annList-event"></div>
+  </div>
+
+  <div id="annSection-announcement" style="display:none;">
+    <div class="divider" style="margin-top:28px;"><div class="divider-line"></div><div class="divider-text">📢 公告 · Announcements</div><div class="divider-line"></div></div>
+    <div id="annList-announcement"></div>
+  </div>
+
+  <div class="divider" style="margin-top:28px;"><div class="divider-line"></div><div class="divider-text">💰 价目表 · Price List</div><div class="divider-line"></div></div>
+  <div style="overflow-x:auto;">
+    <table class="rsv-table">
+      <thead><tr><th>SERVICE 服务</th><th>PRICE 价格</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">本甲 MANICURE</td></tr>
+        <tr><td>单色/跳色/猫眼</td><td>RM50</td></tr>
+        <tr><td>简单款式</td><td>RM65</td></tr>
+        <tr><td>复杂款式</td><td>RM85</td></tr>
+        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">延长 NAIL EXTENSION</td></tr>
+        <tr><td>单色/跳色/猫眼</td><td>RM95</td></tr>
+        <tr><td>简单款式</td><td>RM115</td></tr>
+        <tr><td>复杂款式</td><td>RM130</td></tr>
+        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">卸甲 REMOVAL</td></tr>
+        <tr><td>卸本甲</td><td>RM10</td></tr>
+        <tr><td>卸甲片</td><td>RM15</td></tr>
+        <tr><td>纯卸（含前置处理）</td><td>RM20–25</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="annSection-precaution" style="display:none;">
+    <div class="divider" style="margin-top:28px;"><div class="divider-line"></div><div class="divider-text">⚠️ 须知 · Precautions</div><div class="divider-line"></div></div>
+    <div id="annList-precaution"></div>
+  </div>
+</div>
 <div class="section active" id="section-book">
   <div class="page-header"><h1>LUNÉA</h1><p>NAIL STUDIO · PENANG</p></div>
   <div id="bookFormPanel" style="display:none;">
@@ -375,7 +424,7 @@ function showSection(name) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('section-'+name).classList.add('active');
-  const idx={book:0,availability:1,design:2,chat:3}[name];
+  const idx={dashboard:0,book:1,availability:2,design:3,chat:4}[name];
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
   if(name==='chat'){document.getElementById('chatBadge').classList.remove('show');}
   if(name==='availability')initAvailCalendar();
@@ -509,6 +558,20 @@ async function loadMyDesigns(){
     </div>`).join('')||'<p style="color:var(--mid);font-size:13px;">No design uploads yet.</p>';
 }
 loadMyDesigns();
+async function loadDashboard(){
+  const items=await fetch('/api/announcements').then(r=>r.json());
+  ['promotion','event','announcement','precaution'].forEach(type=>{
+    const group=items.filter(a=>a.type===type);
+    const section=document.getElementById('annSection-'+type);
+    section.style.display=group.length?'block':'none';
+    document.getElementById('annList-'+type).innerHTML=group.map(a=>`<div class="ann-item">
+        <div class="ann-item-title">${a.title}</div>
+        <div class="ann-item-content">${a.content||''}</div>
+        <div class="ann-item-date">${a.created_at}</div>
+      </div>`).join('');
+  });
+}
+loadDashboard();
 let socket,sessionId,chatStarted=false;
 function initSocket(){
   socket=io();
@@ -538,6 +601,7 @@ function initSocket(){
     if(bd===data.date)loadTimesForDate(bd);
     if(availCalY!==undefined)loadAvailCalData();
   });
+  socket.on('announcements_changed',()=>loadDashboard());
 }
 initSocket();
 function startChat(){

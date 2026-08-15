@@ -108,10 +108,30 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
 .tb-open{background:#edfaed;border:1.5px solid #63c95e;display:flex;align-items:center;justify-content:space-between;}
 .tb-empty{border:1.5px dashed var(--border);cursor:pointer;}
 .tb-empty:hover{border-color:var(--rose);background:var(--light);}
+.tb-booked{background:#faeeda;border:1.5px dashed #d9a441;}
 .tb-appt-pending{background:#faeeda;border-left:4px solid #f0a500;}
 .tb-appt-confirmed{background:#eaf3de;border-left:4px solid #63c95e;}
 .tb-appt-done{background:#e6f1fb;border-left:4px solid #4a9edd;}
 .tb-appt-cancelled{background:#fcebeb;border-left:4px solid #e24b4a;}
+.ann-form{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;}
+.ann-form-row{display:flex;gap:10px;margin-bottom:10px;}
+.ann-form select,.ann-form input,.ann-form textarea{padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;}
+.ann-form select{flex:0 0 180px;}
+.ann-form input{flex:1;}
+.ann-form textarea{width:100%;resize:vertical;min-height:70px;margin-bottom:10px;}
+.ann-form button{padding:9px 18px;border:none;border-radius:8px;font-size:13px;cursor:pointer;}
+.ann-save{background:var(--rose);color:#fff;}
+.ann-cancel{background:none;border:1px solid var(--border);color:var(--mid);}
+.ann-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.ann-card.inactive{opacity:.5;}
+.ann-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;letter-spacing:1px;font-weight:600;margin-bottom:6px;}
+.ann-badge-announcement{background:#e6f1fb;color:#2266a0;}
+.ann-badge-promotion{background:#fcebeb;color:#a32d2d;}
+.ann-badge-event{background:#eaf3de;color:#3b6d11;}
+.ann-badge-precaution{background:#faeeda;color:#a86f00;}
+.ann-actions{display:flex;gap:6px;flex-shrink:0;}
+.ann-actions button{padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:11px;cursor:pointer;}
+.ann-actions button:hover{background:var(--light);}
 .menu-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--dark);padding:2px 8px;margin-right:8px;}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;}
 .sidebar-overlay.show{display:block;}
@@ -124,6 +144,8 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
   .session-list{width:100%;max-height:220px;border-radius:12px 12px 0 0;}
   .chat-panel{border-left:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;min-height:420px;}
   .appt-toolbar{flex-direction:column;}
+  .ann-form-row{flex-direction:column;}
+  .ann-form select{flex:1;}
   table{display:block;overflow-x:auto;white-space:nowrap;}
 }
 </style>
@@ -153,6 +175,8 @@ async function login(){
     <div class="nav-item" onclick="showTab('calendar')">📅 Calendar</div>
     <div class="nav-item" onclick="showTab('designs')">🖼 Design Uploads <span class="notif-dot" id="designDot"></span></div>
     <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
+    <div class="nav-item" onclick="showTab('members')">👥 Members</div>
+    <div class="nav-item" onclick="showTab('announcements')">📢 Dashboard Content</div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
@@ -221,12 +245,40 @@ async function login(){
         </div>
       </div>
 
+      <div id="tab-members" style="display:none">
+        <div class="appt-toolbar">
+          <input type="text" id="memberSearch" placeholder="Search by name, email or phone..." oninput="renderMembers()">
+        </div>
+        <table><thead><tr><th>NAME</th><th>EMAIL</th><th>PHONE</th><th>JOINED</th></tr></thead>
+        <tbody id="membersBody"></tbody></table>
+      </div>
+
+      <div id="tab-announcements" style="display:none">
+        <div class="ann-form">
+          <div class="ann-form-row">
+            <select id="annType">
+              <option value="announcement">📢 Announcement</option>
+              <option value="promotion">🎉 Promotion</option>
+              <option value="event">📅 Event</option>
+              <option value="precaution">⚠️ Precaution</option>
+            </select>
+            <input type="text" id="annTitle" placeholder="Title">
+          </div>
+          <textarea id="annContent" placeholder="Content..."></textarea>
+          <div style="display:flex;gap:10px;">
+            <button class="ann-save" id="annSaveBtn" onclick="saveAnnouncement()">+ Add</button>
+            <button class="ann-cancel" id="annCancelBtn" style="display:none" onclick="resetAnnouncementForm()">Cancel Edit</button>
+          </div>
+        </div>
+        <div id="announcementsList"></div>
+      </div>
+
     </div>
   </div>
 </div>
 <script>
 let socket,activeSession=null;
-const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天"};
+const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天",members:"Member Management · 会员管理",announcements:"Dashboard Content · 公告管理"};
 function showTab(name){
   Object.keys(TABS).forEach(t=>{
     const el=document.getElementById("tab-"+t);
@@ -238,6 +290,8 @@ function showTab(name){
   if(name==="calendar")initCalendar();
   if(name==="designs")loadDesigns();
   if(name==="chat"){loadSessions();document.getElementById("chatDot").classList.remove("show");}
+  if(name==="members")loadMembers();
+  if(name==="announcements")loadAnnouncementsAdmin();
   document.getElementById("sidebar").classList.remove("open");
   document.getElementById("sidebarOverlay").classList.remove("show");
 }
@@ -354,6 +408,8 @@ function renderDayView(ds){
         <span style="font-size:12px;color:#2a7a2a;">✓ Open${sl.note?" · "+sl.note:""}</span>
         <button onclick="delSlot(${sl.id})" style="border:none;background:none;color:#aaa;cursor:pointer;font-size:15px;">✕</button>
       </div>`;
+    } else if(sl&&!sl.is_available){
+      block=`<div class="tblock tb-booked"><span style="font-size:12px;color:#a86f00;">🔒 Already booked (buffer)</span></div>`;
     } else {
       block=`<div class="tblock tb-empty" onclick="addSlot('${ds}','${t}')"><span style="font-size:11px;color:var(--mid);">+ Open slot</span></div>`;
     }
@@ -467,6 +523,84 @@ async function sendAdminImage(file){
     if(json.success)socket.emit("send_message",{session_id:activeSession,sender:"admin",message:"[[img]]"+json.image_url});
     else alert(json.error||"Upload failed. Please try again.");
   }catch(e){alert("Upload failed. Please try again.");}
+}
+/* ── Members ── */
+let allMembers=[];
+async function loadMembers(){
+  allMembers=await fetch("/api/admin/customers").then(r=>r.json());
+  renderMembers();
+}
+function renderMembers(){
+  const q=document.getElementById("memberSearch").value.trim().toLowerCase();
+  const data=allMembers.filter(m=>!q||m.name.toLowerCase().includes(q)||m.email.toLowerCase().includes(q)||(m.phone||"").toLowerCase().includes(q));
+  document.getElementById("membersBody").innerHTML=data.map(m=>`<tr>
+      <td>${m.name}</td><td style="font-size:12px">${m.email}</td>
+      <td>${m.phone||"–"}</td><td style="font-size:12px;color:var(--mid)">${m.created_at}</td>
+    </tr>`).join("")||`<tr><td colspan="4" style="text-align:center;color:var(--mid);">No matching members.</td></tr>`;
+}
+/* ── Dashboard Content (Announcements/Promotions/Events/Precautions) ── */
+let allAnnouncements=[],editingAnnId=null;
+const ANN_LABEL={announcement:"📢 Announcement",promotion:"🎉 Promotion",event:"📅 Event",precaution:"⚠️ Precaution"};
+async function loadAnnouncementsAdmin(){
+  allAnnouncements=await fetch("/api/admin/announcements").then(r=>r.json());
+  renderAnnouncementsAdmin();
+}
+function renderAnnouncementsAdmin(){
+  const list=document.getElementById("announcementsList");
+  list.innerHTML=allAnnouncements.map(a=>`<div class="ann-card ${a.active?"":"inactive"}">
+      <div>
+        <span class="ann-badge ann-badge-${a.type}">${ANN_LABEL[a.type]||a.type}</span>
+        <div style="font-size:14px;font-weight:600;margin:2px 0;">${a.title}</div>
+        <div style="font-size:12px;color:var(--mid);white-space:pre-wrap;">${a.content||""}</div>
+        <div style="font-size:10px;color:#b09080;margin-top:6px;">${a.created_at}${a.active?"":" · Hidden"}</div>
+      </div>
+      <div class="ann-actions">
+        <button onclick="editAnnouncement(${a.id})">Edit</button>
+        <button onclick="toggleAnnouncementActive(${a.id},${!a.active})">${a.active?"Hide":"Show"}</button>
+        <button onclick="deleteAnnouncementConfirm(${a.id})">Delete</button>
+      </div>
+    </div>`).join("")||`<p style="color:var(--mid);font-size:13px;">No announcements yet.</p>`;
+}
+function editAnnouncement(id){
+  const a=allAnnouncements.find(x=>x.id===id);if(!a)return;
+  editingAnnId=id;
+  document.getElementById("annType").value=a.type;
+  document.getElementById("annTitle").value=a.title;
+  document.getElementById("annContent").value=a.content||"";
+  document.getElementById("annSaveBtn").textContent="Save Changes";
+  document.getElementById("annCancelBtn").style.display="inline-block";
+}
+function resetAnnouncementForm(){
+  editingAnnId=null;
+  document.getElementById("annType").value="announcement";
+  document.getElementById("annTitle").value="";
+  document.getElementById("annContent").value="";
+  document.getElementById("annSaveBtn").textContent="+ Add";
+  document.getElementById("annCancelBtn").style.display="none";
+}
+async function saveAnnouncement(){
+  const title=document.getElementById("annTitle").value.trim();
+  if(!title){alert("Please enter a title.");return;}
+  const body={type:document.getElementById("annType").value,title,content:document.getElementById("annContent").value.trim()};
+  if(editingAnnId){
+    const a=allAnnouncements.find(x=>x.id===editingAnnId);
+    body.active=a?a.active:true;
+    await fetch("/api/admin/announcements/"+editingAnnId,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  } else {
+    await fetch("/api/admin/announcements",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  }
+  resetAnnouncementForm();
+  loadAnnouncementsAdmin();
+}
+async function toggleAnnouncementActive(id,active){
+  const a=allAnnouncements.find(x=>x.id===id);if(!a)return;
+  await fetch("/api/admin/announcements/"+id,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:a.type,title:a.title,content:a.content,active})});
+  loadAnnouncementsAdmin();
+}
+async function deleteAnnouncementConfirm(id){
+  if(!confirm("Delete this item?"))return;
+  await fetch("/api/admin/announcements/"+id,{method:"DELETE"});
+  loadAnnouncementsAdmin();
 }
 async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
 initSocket();loadAppointments();
