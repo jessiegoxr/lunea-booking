@@ -130,9 +130,40 @@ def init_db():
         for dow, times in default_pattern.items():
             for t in times:
                 cur.execute('INSERT INTO weekly_schedule (day_of_week,time) VALUES (%s,%s) ON CONFLICT (day_of_week,time) DO NOTHING',(dow,t))
+    cur.execute('''CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        recipient_type TEXT NOT NULL,
+        recipient_email TEXT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT DEFAULT '',
+        link TEXT DEFAULT '',
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW())''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
+
+def create_notification(recipient_type, recipient_email, ntype, title, message, link=''):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''INSERT INTO notifications (recipient_type,recipient_email,type,title,message,link)
+        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id,created_at''',(recipient_type,recipient_email,ntype,title,message,link))
+    new_id, created_at = cur.fetchone()
+    conn.commit(); cur.close(); conn.close()
+    payload = {'id':new_id,'type':ntype,'title':title,'message':message,'link':link,'created_at':str(created_at),'is_read':False}
+    room = 'admin' if recipient_type == 'admin' else 'customer_'+recipient_email
+    socketio.emit('new_notification', payload, room=room)
+
+def email_from_session_id(sid):
+    if not sid or not sid.startswith('cust_'): return None
+    try:
+        cid = int(sid.split('_')[1])
+    except (IndexError, ValueError):
+        return None
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT email FROM customers WHERE id=%s',(cid,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    return row[0] if row else None
 
 def generate_from_schedule(weeks_ahead):
     conn = get_db(); cur = conn.cursor()
@@ -189,6 +220,8 @@ def book_appointment():
     conn.commit(); cur.close(); cur2.close(); conn.close()
     socketio.emit('new_appointment',{'name':d['name'],'date':d['date']},room='admin')
     socketio.emit('availability_changed',{'date':d['date'],'time':d['time'],'is_available':False})
+    create_notification('admin', None, 'new_appointment', 'New Reservation',
+        f"{d['name']} booked {d['date']} {d['time']}", 'appointments')
     return jsonify({'success':True})
 
 @app.route('/api/upload-design', methods=['POST'])
@@ -214,6 +247,7 @@ def upload_design():
     new_id = cur.fetchone()[0]
     conn.commit(); cur.close(); conn.close()
     socketio.emit('new_design',{'name':name},room='admin')
+    create_notification('admin', None, 'new_design', 'New Design Upload', f"{name} uploaded a design for review", 'designs')
     return jsonify({'success':True,'image_url':f'/design-image/{new_id}'})
 
 @app.route('/design-image/<int:did>')
@@ -282,6 +316,10 @@ def update_appt_status(aid):
         socketio.emit('appointment_status_changed',{
             'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
         }, room='customer_'+row['customer_email'])
+        status_msg = f"Your reservation on {row['date']} {row['time']} is now {status}."
+        if status == 'cancelled' and reason:
+            status_msg += f" Reason: {reason}"
+        create_notification('customer', row['customer_email'], 'appointment_status', 'Reservation Update', status_msg, 'book')
     for t in changed:
         socketio.emit('availability_changed',{'date':row['date'],'time':t,'is_available':status=='cancelled'})
     return jsonify({'success':True})
@@ -359,7 +397,7 @@ def review_design(did):
     cur.execute('UPDATE design_uploads SET admin_note=%s,admin_price=%s WHERE id=%s',
         (d.get('note',''),d.get('price',''),did))
     cur2 = dict_cursor(conn)
-    cur2.execute('SELECT phone,customer_name FROM design_uploads WHERE id=%s',(did,))
+    cur2.execute('SELECT phone,customer_name,customer_email FROM design_uploads WHERE id=%s',(did,))
     row = cur2.fetchone()
     conn.commit(); cur.close(); cur2.close(); conn.close()
     if row and row['phone']:
@@ -368,6 +406,10 @@ def review_design(did):
             'admin_note': d.get('note',''),
             'customer_name': row['customer_name']
         }, room='design_notify_'+row['phone'])
+    if row and row['customer_email']:
+        msg = f"Your design has been reviewed: {d.get('price','')}"
+        if d.get('note'): msg += f" — {d['note']}"
+        create_notification('customer', row['customer_email'], 'design_reviewed', 'Design Reviewed', msg, 'design')
     return jsonify({'success':True})
 
 @app.route('/api/admin/chat-sessions')
@@ -463,8 +505,18 @@ def on_message(data):
     cur.execute('UPDATE chat_sessions SET last_message=%s,last_time=%s WHERE id=%s',(msg[:60],now,sid))
     conn.commit(); cur.close(); conn.close()
     emit('receive_message',{'session_id':sid,'sender':sender,'message':msg,'timestamp':now},room=sid)
+    preview = '📷 Photo' if msg.startswith('[[img]]') else msg[:80]
     if sender == 'customer':
         emit('customer_message',{'session_id':sid,'message':msg,'timestamp':now},room='admin')
+        conn = get_db(); cur = dict_cursor(conn)
+        cur.execute('SELECT customer_name FROM chat_sessions WHERE id=%s',(sid,))
+        cs = cur.fetchone(); cur.close(); conn.close()
+        create_notification('admin', None, 'new_chat_message', 'New Chat Message',
+            f"{cs['customer_name'] if cs else 'Customer'}: {preview}", 'chat')
+    else:
+        email = email_from_session_id(sid)
+        if email:
+            create_notification('customer', email, 'chat_reply', 'New message from LUNÉA', preview, 'chat')
 
 @socketio.on('admin_join_session')
 def admin_join_session(data):
@@ -639,6 +691,57 @@ def get_customer_appointments():
     cur.execute('SELECT * FROM appointments WHERE customer_email=%s ORDER BY created_at DESC',(session['customer_email'],))
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/customer/notifications')
+def get_customer_notifications():
+    if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('''SELECT * FROM notifications WHERE recipient_type='customer' AND recipient_email=%s
+        ORDER BY created_at DESC LIMIT 50''',(session['customer_email'],))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/customer/notifications/<int:nid>/read', methods=['POST'])
+def mark_customer_notification_read(nid):
+    if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''UPDATE notifications SET is_read=TRUE WHERE id=%s AND recipient_type='customer' AND recipient_email=%s''',
+        (nid,session['customer_email']))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/customer/notifications/read-all', methods=['POST'])
+def mark_all_customer_notifications_read():
+    if not session.get('customer_email'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''UPDATE notifications SET is_read=TRUE WHERE recipient_type='customer' AND recipient_email=%s''',
+        (session['customer_email'],))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/notifications')
+def get_admin_notifications():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute("SELECT * FROM notifications WHERE recipient_type='admin' ORDER BY created_at DESC LIMIT 50")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/notifications/<int:nid>/read', methods=['POST'])
+def mark_admin_notification_read(nid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read=TRUE WHERE id=%s AND recipient_type='admin'",(nid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/notifications/read-all', methods=['POST'])
+def mark_all_admin_notifications_read():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read=TRUE WHERE recipient_type='admin'")
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
 
 
 if __name__ == '__main__':
