@@ -13,6 +13,14 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
 EXT_MIME = {'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}
+TIMES = [f'{h:02d}:00' for h in range(24)]
+BOOKING_BUFFER_SLOTS = 3  # booked slot + 2 hours after (e.g. 12pm booking closes 12pm,1pm,2pm)
+
+def buffer_slots(time_str):
+    if time_str not in TIMES:
+        return [time_str]
+    idx = TIMES.index(time_str)
+    return TIMES[idx:idx+BOOKING_BUFFER_SLOTS]
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lunea2026')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
@@ -95,6 +103,13 @@ def init_db():
         WHERE (a.customer_email IS NULL OR a.customer_email = '')
         AND a.name = c.name AND a.phone = c.phone
         AND (SELECT COUNT(*) FROM customers c2 WHERE c2.name = a.name AND c2.phone = a.phone) = 1''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS announcements (
+        id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL DEFAULT 'announcement',
+        title TEXT NOT NULL,
+        content TEXT DEFAULT '',
+        active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW())''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -242,18 +257,25 @@ def update_appt_status(aid):
     cur2 = dict_cursor(conn)
     cur2.execute('SELECT phone,service,date,time,customer_email FROM appointments WHERE id=%s',(aid,))
     row = cur2.fetchone()
-    if status == 'done' and row:
-        cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,FALSE,'')
-            ON CONFLICT (date,time) DO UPDATE SET is_available=FALSE''',(row['date'],row['time']))
+    changed = []
+    if status in ('confirmed','done') and row:
+        for t in buffer_slots(row['time']):
+            cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,FALSE,'')
+                ON CONFLICT (date,time) DO UPDATE SET is_available=FALSE''',(row['date'],t))
+            changed.append(t)
     elif status == 'cancelled' and row:
-        cur.execute('UPDATE availability SET is_available=TRUE WHERE date=%s AND time=%s',(row['date'],row['time']))
+        for t in buffer_slots(row['time']):
+            cur.execute("SELECT COUNT(*) FROM appointments WHERE date=%s AND time=%s AND status<>'cancelled' AND id<>%s",(row['date'],t,aid))
+            if cur.fetchone()[0] == 0:
+                cur.execute('UPDATE availability SET is_available=TRUE WHERE date=%s AND time=%s',(row['date'],t))
+                changed.append(t)
     conn.commit(); cur.close(); cur2.close(); conn.close()
     if row and row['customer_email']:
         socketio.emit('appointment_status_changed',{
             'status':status,'reason':reason,'service':row['service'],'date':row['date'],'time':row['time']
         }, room='customer_'+row['customer_email'])
-    if status in ('done','cancelled') and row:
-        socketio.emit('availability_changed',{'date':row['date'],'time':row['time'],'is_available':status=='cancelled'})
+    for t in changed:
+        socketio.emit('availability_changed',{'date':row['date'],'time':t,'is_available':status=='cancelled'})
     return jsonify({'success':True})
 
 @app.route('/api/admin/designs')
@@ -264,6 +286,62 @@ def get_designs():
         admin_note,admin_price,created_at,customer_email FROM design_uploads ORDER BY created_at DESC''')
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/customers')
+def get_customers():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT id,email,name,phone,created_at FROM customers ORDER BY created_at DESC')
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/announcements')
+def get_announcements():
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute("SELECT * FROM announcements WHERE active=TRUE ORDER BY created_at DESC")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/announcements')
+def admin_get_announcements():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute("SELECT * FROM announcements ORDER BY created_at DESC")
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/announcements', methods=['POST'])
+def create_announcement():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    if not d.get('title'):
+        return jsonify({'success':False,'error':'Title is required.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO announcements (type,title,content) VALUES (%s,%s,%s)',
+        (d.get('type','announcement'),d['title'],d.get('content','')))
+    conn.commit(); cur.close(); conn.close()
+    socketio.emit('announcements_changed',{})
+    return jsonify({'success':True})
+
+@app.route('/api/admin/announcements/<int:aid>', methods=['POST'])
+def update_announcement(aid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE announcements SET type=%s,title=%s,content=%s,active=%s WHERE id=%s',
+        (d.get('type','announcement'),d.get('title',''),d.get('content',''),d.get('active',True),aid))
+    conn.commit(); cur.close(); conn.close()
+    socketio.emit('announcements_changed',{})
+    return jsonify({'success':True})
+
+@app.route('/api/admin/announcements/<int:aid>', methods=['DELETE'])
+def delete_announcement(aid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('DELETE FROM announcements WHERE id=%s',(aid,))
+    conn.commit(); cur.close(); conn.close()
+    socketio.emit('announcements_changed',{})
+    return jsonify({'success':True})
 
 @app.route('/api/admin/designs/<int:did>/review', methods=['POST'])
 def review_design(did):
