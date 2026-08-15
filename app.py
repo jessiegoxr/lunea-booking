@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, session, send_from_d
 from flask_socketio import SocketIO, emit, join_room
 import psycopg2, psycopg2.extras
 import os, uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -109,9 +109,49 @@ def init_db():
         content TEXT DEFAULT '',
         active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS weekly_schedule (
+        id SERIAL PRIMARY KEY,
+        day_of_week INTEGER NOT NULL,
+        time TEXT NOT NULL,
+        UNIQUE(day_of_week, time))''')
+    cur.execute('SELECT COUNT(*) FROM weekly_schedule')
+    if cur.fetchone()[0] == 0:
+        evening = ['17:00','18:00','19:00','20:00','21:00','22:00','23:00']
+        weekend = [f'{h:02d}:00' for h in range(9,24)]
+        default_pattern = {
+            0: ['00:00','01:00'] + evening,   # Monday
+            1: ['00:00','01:00','23:00'],     # Tuesday
+            2: ['00:00','01:00'] + evening,   # Wednesday
+            3: ['23:00'],                     # Thursday
+            4: ['00:00','01:00'] + evening,   # Friday
+            5: ['00:00','01:00'] + weekend,   # Saturday
+            6: ['00:00','01:00'] + weekend,   # Sunday
+        }
+        for dow, times in default_pattern.items():
+            for t in times:
+                cur.execute('INSERT INTO weekly_schedule (day_of_week,time) VALUES (%s,%s) ON CONFLICT (day_of_week,time) DO NOTHING',(dow,t))
     conn.commit(); cur.close(); conn.close()
 
 init_db()
+
+def generate_from_schedule(weeks_ahead):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT day_of_week, time FROM weekly_schedule')
+    pattern = {}
+    for dow, t in cur.fetchall():
+        pattern.setdefault(dow, []).append(t)
+    created = 0
+    today = datetime.now().date()
+    for i in range(weeks_ahead * 7):
+        d = today + timedelta(days=i)
+        for t in pattern.get(d.weekday(), []):
+            cur.execute('''INSERT INTO availability (date,time,is_available,note) VALUES (%s,%s,TRUE,'')
+                ON CONFLICT (date,time) DO NOTHING''',(d.isoformat(), t))
+            created += cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    return created
+
+generate_from_schedule(12)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -532,6 +572,38 @@ def get_public_availability():
         cur.execute("SELECT date,time,note FROM availability WHERE is_available=TRUE AND date >= CURRENT_DATE::TEXT ORDER BY date,time")
     rows = cur.fetchall(); cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/weekly-schedule')
+def get_weekly_schedule():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT day_of_week, time FROM weekly_schedule ORDER BY day_of_week, time')
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/weekly-schedule', methods=['POST'])
+def toggle_weekly_schedule():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    dow, t = d.get('day_of_week'), d.get('time')
+    if dow is None or not t:
+        return jsonify({'success':False,'error':'Missing day_of_week or time.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    if d.get('open'):
+        cur.execute('INSERT INTO weekly_schedule (day_of_week,time) VALUES (%s,%s) ON CONFLICT (day_of_week,time) DO NOTHING',(dow,t))
+    else:
+        cur.execute('DELETE FROM weekly_schedule WHERE day_of_week=%s AND time=%s',(dow,t))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/weekly-schedule/generate', methods=['POST'])
+def trigger_generate_schedule():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    weeks = max(1, min(int(d.get('weeks',12)), 52))
+    created = generate_from_schedule(weeks)
+    socketio.emit('availability_changed',{'date':'','time':'','is_available':True})
+    return jsonify({'success':True,'created':created})
 
 @app.route('/api/customer/designs')
 def get_customer_designs():
