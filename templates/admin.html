@@ -133,6 +133,15 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
 .ann-actions{display:flex;gap:6px;flex-shrink:0;}
 .ann-actions button{padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:11px;cursor:pointer;}
 .ann-actions button:hover{background:var(--light);}
+.sched-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;}
+.sched-toolbar p{font-size:12px;color:var(--mid);max-width:520px;line-height:1.6;}
+.sched-toolbar input{width:64px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;}
+table.sched-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+table.sched-table th{padding:8px 4px;font-size:11px;color:var(--mid);text-align:center;background:var(--light);}
+.sched-time{font-size:10px;color:var(--mid);padding:2px 8px;white-space:nowrap;text-align:right;}
+.sched-cell{width:26px;height:20px;margin:2px auto;border-radius:5px;background:var(--light);cursor:pointer;border:1px solid var(--border);transition:.15s;}
+.sched-cell.open{background:#63c95e;border-color:#63c95e;}
+.sched-cell:hover{opacity:.75;}
 .menu-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--dark);padding:2px 8px;margin-right:8px;}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;}
 .sidebar-overlay.show{display:block;}
@@ -147,7 +156,9 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
   .appt-toolbar{flex-direction:column;}
   .ann-form-row{flex-direction:column;}
   .ann-form select{flex:1;}
+  .sched-toolbar{flex-direction:column;align-items:stretch;}
   table{display:block;overflow-x:auto;white-space:nowrap;}
+  table.sched-table{display:table;}
 }
 </style>
 </head>
@@ -178,6 +189,7 @@ async function login(){
     <div class="nav-item" onclick="showTab('chat')">💬 Live Chat <span class="notif-dot" id="chatDot"></span></div>
     <div class="nav-item" onclick="showTab('members')">👥 Members</div>
     <div class="nav-item" onclick="showTab('announcements')">📢 Dashboard Content</div>
+    <div class="nav-item" onclick="showTab('schedule')">🗓 Weekly Schedule</div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
@@ -274,12 +286,28 @@ async function login(){
         <div id="announcementsList"></div>
       </div>
 
+      <div id="tab-schedule" style="display:none">
+        <div class="sched-toolbar">
+          <p>Define your standing weekly opening hours. Click a cell to toggle it. New upcoming dates are automatically opened to match this pattern — manually closed dates are never reopened by it.</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+            <input type="number" id="genWeeks" value="12" min="1" max="52">
+            <button class="ann-save" onclick="regenerateSchedule()">Apply for N weeks →</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="sched-table">
+            <thead><tr><th></th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr></thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
 <script>
 let socket,activeSession=null;
-const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天",members:"Member Management · 会员管理",announcements:"Dashboard Content · 公告管理"};
+const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天",members:"Member Management · 会员管理",announcements:"Dashboard Content · 公告管理",schedule:"Weekly Schedule · 每周时段"};
 function showTab(name){
   Object.keys(TABS).forEach(t=>{
     const el=document.getElementById("tab-"+t);
@@ -293,6 +321,7 @@ function showTab(name){
   if(name==="chat"){loadSessions();document.getElementById("chatDot").classList.remove("show");}
   if(name==="members")loadMembers();
   if(name==="announcements")loadAnnouncementsAdmin();
+  if(name==="schedule")loadWeeklySchedule();
   document.getElementById("sidebar").classList.remove("open");
   document.getElementById("sidebarOverlay").classList.remove("show");
 }
@@ -606,6 +635,33 @@ async function deleteAnnouncementConfirm(id){
   if(!confirm("Delete this item?"))return;
   await fetch("/api/admin/announcements/"+id,{method:"DELETE"});
   loadAnnouncementsAdmin();
+}
+/* ── Weekly Schedule ── */
+let weeklySchedule=[];
+const SCHED_DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+async function loadWeeklySchedule(){
+  weeklySchedule=await fetch("/api/admin/weekly-schedule").then(r=>r.json());
+  renderWeeklySchedule();
+}
+function renderWeeklySchedule(){
+  document.getElementById("scheduleBody").innerHTML=TIMES.map(t=>{
+    const cells=SCHED_DAYS.map((_,dow)=>{
+      const open=weeklySchedule.some(s=>s.day_of_week===dow&&s.time===t);
+      return `<td><div class="sched-cell${open?" open":""}" onclick="toggleSchedCell(${dow},'${t}')"></div></td>`;
+    }).join("");
+    return `<tr><td class="sched-time">${t}</td>${cells}</tr>`;
+  }).join("");
+}
+async function toggleSchedCell(dow,t){
+  const open=weeklySchedule.some(s=>s.day_of_week===dow&&s.time===t);
+  await fetch("/api/admin/weekly-schedule",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({day_of_week:dow,time:t,open:!open})});
+  await loadWeeklySchedule();
+}
+async function regenerateSchedule(){
+  const weeks=parseInt(document.getElementById("genWeeks").value)||12;
+  const res=await fetch("/api/admin/weekly-schedule/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weeks})});
+  const json=await res.json();
+  alert(`Opened ${json.created} new slot(s) across the next ${weeks} week(s).`);
 }
 async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
 initSocket();loadAppointments();
