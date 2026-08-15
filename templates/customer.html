@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LUNÉA Nail Studio – Penang</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
 <style>
 :root {
   --cream: #faf6f1; --rose: #c4a898; --dark: #2c2320; --mid: #8a6f65;
@@ -81,6 +82,31 @@ textarea { resize:vertical; min-height:80px; }
 .ann-item-title { font-size:14px; font-weight:600; color:var(--dark); margin-bottom:4px; }
 .ann-item-content { font-size:13px; color:var(--mid); line-height:1.6; white-space:pre-wrap; }
 .ann-item-date { font-size:11px; color:#b09080; margin-top:8px; }
+.lp-poster { width:100%; max-width:420px; margin:0 auto; background:#fff; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); position:relative; padding:26px 26px 16px; font-family:'Cormorant Garamond',serif; }
+.lp-corner { position:absolute; width:22px; height:22px; border-color:#c2a882; border-style:solid; }
+.lp-corner-tl { top:12px; left:12px; border-width:1.5px 0 0 1.5px; }
+.lp-corner-tr { top:12px; right:12px; border-width:1.5px 1.5px 0 0; }
+.lp-corner-bl { bottom:12px; left:12px; border-width:0 0 1.5px 1.5px; }
+.lp-corner-br { bottom:12px; right:12px; border-width:0 1.5px 1.5px 0; }
+.lp-header { text-align:center; margin-bottom:10px; }
+.lp-moons { font-size:12px; letter-spacing:10px; margin-bottom:4px; }
+.lp-brand { font-family:'Cormorant Garamond',serif; font-size:30px; font-weight:300; letter-spacing:14px; color:#1a1108; line-height:1; margin-bottom:4px; }
+.lp-sub { font-size:7.5px; letter-spacing:4px; color:#8a7060; text-transform:uppercase; margin-bottom:5px; }
+.lp-diamond { color:#c2a882; font-size:10px; }
+.lp-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; margin-bottom:6px; }
+.lp-section-header { font-size:10.5px; font-weight:400; color:#8a7060; letter-spacing:.5px; border-bottom:1px solid #ddd0c0; padding-bottom:5px; margin-bottom:5px; }
+.lp-section-header em { font-style:italic; }
+.lp-item { display:flex; justify-content:space-between; align-items:flex-start; padding:4.5px 0; border-bottom:1px dashed #ddd0c0; }
+.lp-item:last-child { border-bottom:none; }
+.lp-cn { font-size:11px; font-weight:600; color:#1a1108; line-height:1.25; }
+.lp-en { font-size:8px; color:#8a7060; line-height:1.3; }
+.lp-price { font-size:11px; color:#1a1108; white-space:nowrap; padding-left:5px; padding-top:1px; flex-shrink:0; }
+.lp-bottom-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; border-top:1px solid #ddd0c0; padding-top:7px; margin-bottom:8px; }
+.lp-footer { border-top:1px solid #e8dcd0; padding-top:6px; text-align:center; }
+.lp-footer-note { font-size:6.8px; color:#9a8070; line-height:1.6; letter-spacing:.2px; }
+.lp-footer-dot { color:#c2a882; font-size:9px; letter-spacing:6px; margin:4px 0 2px; }
+.lp-footer-dm { font-size:7px; letter-spacing:2.5px; color:#8a7060; text-transform:uppercase; }
+@media(max-width:480px){ .lp-poster{padding:18px 16px 12px;} .lp-brand{font-size:24px;letter-spacing:10px;} }
 .rsv-table-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
 .btn-sm { width:auto; padding:9px 18px; font-size:12px; }
 table.rsv-table { width:100%; border-collapse:collapse; background:var(--white); border-radius:12px; overflow:hidden; border:1px solid var(--border); }
@@ -257,24 +283,52 @@ async function submitAuth(){
   </div>
 
   <div class="divider" style="margin-top:28px;"><div class="divider-line"></div><div class="divider-text">💰 价目表 · Price List</div><div class="divider-line"></div></div>
-  <div style="overflow-x:auto;">
-    <table class="rsv-table">
-      <thead><tr><th>SERVICE 服务</th><th>PRICE 价格</th></tr></thead>
-      <tbody>
-        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">本甲 MANICURE</td></tr>
-        <tr><td>单色/跳色/猫眼</td><td>RM50</td></tr>
-        <tr><td>简单款式</td><td>RM65</td></tr>
-        <tr><td>复杂款式</td><td>RM85</td></tr>
-        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">延长 NAIL EXTENSION</td></tr>
-        <tr><td>单色/跳色/猫眼</td><td>RM95</td></tr>
-        <tr><td>简单款式</td><td>RM115</td></tr>
-        <tr><td>复杂款式</td><td>RM130</td></tr>
-        <tr><td colspan="2" style="font-size:11px;letter-spacing:1px;color:var(--rose);background:var(--light-rose);">卸甲 REMOVAL</td></tr>
-        <tr><td>卸本甲</td><td>RM10</td></tr>
-        <tr><td>卸甲片</td><td>RM15</td></tr>
-        <tr><td>纯卸（含前置处理）</td><td>RM20–25</td></tr>
-      </tbody>
-    </table>
+  <div class="lp-poster">
+    <div class="lp-corner lp-corner-tl"></div>
+    <div class="lp-corner lp-corner-tr"></div>
+    <div class="lp-corner lp-corner-bl"></div>
+    <div class="lp-corner lp-corner-br"></div>
+
+    <div class="lp-header">
+      <div class="lp-moons">🌙 ✦ 🌙</div>
+      <div class="lp-brand">L U N É A</div>
+      <div class="lp-sub">N A I L &nbsp; S T U D I O &nbsp; · &nbsp; P E N A N G</div>
+      <div class="lp-diamond">◆</div>
+    </div>
+
+    <div class="lp-grid">
+      <div>
+        <div class="lp-section-header">本甲 · <em>Manicure</em></div>
+        <div class="lp-item"><div><div class="lp-cn">单色</div><div class="lp-en">Single Color</div></div><div class="lp-price">RM 58</div></div>
+        <div class="lp-item"><div><div class="lp-cn">跳色 / 猫眼</div><div class="lp-en">Ombre / Cat Eye</div></div><div class="lp-price">RM 68</div></div>
+        <div class="lp-item"><div><div class="lp-cn">简单款式</div><div class="lp-en">Simple Design</div></div><div class="lp-price">RM 88</div></div>
+        <div class="lp-item"><div><div class="lp-cn">复杂款式</div><div class="lp-en">Complex Design</div></div><div class="lp-price">RM 108–138</div></div>
+      </div>
+      <div>
+        <div class="lp-section-header">延长 · <em>Nail Extension</em></div>
+        <div class="lp-item"><div><div class="lp-cn">单色 / 跳色 / 猫眼</div><div class="lp-en">Single / Ombre / Cat Eye</div></div><div class="lp-price">RM 108</div></div>
+        <div class="lp-item"><div><div class="lp-cn">简单款式</div><div class="lp-en">Simple Design</div></div><div class="lp-price">RM 138</div></div>
+        <div class="lp-item"><div><div class="lp-cn">复杂款式</div><div class="lp-en">Complex Design</div></div><div class="lp-price">RM 158–208</div></div>
+      </div>
+    </div>
+
+    <div class="lp-bottom-grid">
+      <div>
+        <div class="lp-section-header">卸甲 · <em>Removal</em></div>
+        <div class="lp-item"><div><div class="lp-cn">卸本甲</div><div class="lp-en">Gel Removal</div></div><div class="lp-price">RM 15</div></div>
+        <div class="lp-item"><div><div class="lp-cn">卸延甲</div><div class="lp-en">Extension Removal</div></div><div class="lp-price">RM 25</div></div>
+      </div>
+      <div>
+        <div class="lp-section-header">其他 · <em>Others</em></div>
+        <div class="lp-item"><div><div class="lp-cn">单甲附加</div><div class="lp-en">Add-on / nail</div></div><div class="lp-price">RM 8</div></div>
+      </div>
+    </div>
+
+    <div class="lp-footer">
+      <div class="lp-footer-note">✦ 所有款式已包含建构 & 前置处理 · All prices include base structure & prep ✦ 预约请提前发送参考图，避免因材料未准备影响时间 ✦</div>
+      <div class="lp-footer-dot">· ✦ ·</div>
+      <div class="lp-footer-dm">D M &nbsp; T O &nbsp; B O O K &nbsp;·&nbsp; P E N A N G &nbsp;·&nbsp; @ l u n e a . n a i l _ s t u d i o</div>
+    </div>
   </div>
 
   <div id="annSection-precaution" style="display:none;">
