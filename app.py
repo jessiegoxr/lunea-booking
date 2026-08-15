@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, session, send_from_directory, Response
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, rooms
 import psycopg2, psycopg2.extras
 import os, uuid
 from datetime import datetime, timedelta
@@ -380,6 +380,14 @@ def get_chat_sessions():
 
 @app.route('/api/chat/messages/<session_id>')
 def get_messages(session_id):
+    if not session.get('admin'):
+        if not session.get('customer_email'):
+            return jsonify({'error':'Unauthorized'}), 401
+        conn = get_db(); cur = dict_cursor(conn)
+        cur.execute('SELECT id FROM customers WHERE email=%s',(session['customer_email'],))
+        cust = cur.fetchone(); cur.close(); conn.close()
+        if not cust or session_id != f"cust_{cust['id']}":
+            return jsonify({'error':'Unauthorized'}), 403
     conn = get_db(); cur = dict_cursor(conn)
     cur.execute('SELECT * FROM chat_messages WHERE session_id=%s ORDER BY timestamp',(session_id,))
     rows = cur.fetchall(); cur.close(); conn.close()
@@ -416,24 +424,30 @@ def chat_image(iid):
 
 @socketio.on('join')
 def on_join(data):
-    sid = data.get('session_id')
-    name = data.get('name','Customer')
-    phone = data.get('phone','')
     is_admin = data.get('is_admin',False)
     if is_admin:
+        if not session.get('admin'): return
         join_room('admin')
-    else:
-        join_room(sid)
-        conn = get_db(); cur = dict_cursor(conn)
-        cur.execute('SELECT id FROM chat_sessions WHERE id=%s',(sid,))
-        exists = cur.fetchone()
-        if not exists:
-            cur2 = conn.cursor()
-            cur2.execute('INSERT INTO chat_sessions (id,customer_name,phone) VALUES (%s,%s,%s)',(sid,name,phone))
-            cur2.close()
-            conn.commit()
-        cur.close(); conn.close()
-        emit('new_session',{'session_id':sid,'name':name,'phone':phone},room='admin')
+        return
+    customer_email = session.get('customer_email')
+    if not customer_email: return
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('SELECT id,name,phone FROM customers WHERE email=%s',(customer_email,))
+    cust = cur.fetchone()
+    if not cust:
+        cur.close(); conn.close(); return
+    sid = f"cust_{cust['id']}"
+    join_room(sid)
+    cur.execute('SELECT id FROM chat_sessions WHERE id=%s',(sid,))
+    exists = cur.fetchone()
+    if not exists:
+        cur2 = conn.cursor()
+        cur2.execute('INSERT INTO chat_sessions (id,customer_name,phone) VALUES (%s,%s,%s)',(sid,cust['name'],cust['phone']))
+        cur2.close()
+        conn.commit()
+    cur.close(); conn.close()
+    emit('new_session',{'session_id':sid,'name':cust['name'],'phone':cust['phone']},room='admin')
+    emit('joined',{'session_id':sid})
 
 @socketio.on('send_message')
 def on_message(data):
@@ -441,6 +455,8 @@ def on_message(data):
     msg = data.get('message','').strip()
     sender = data.get('sender','customer')
     if not msg or not sid: return
+    if sid not in rooms(): return
+    if sender == 'admin' and not session.get('admin'): return
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     conn = get_db(); cur = conn.cursor()
     cur.execute('INSERT INTO chat_messages (session_id,sender,message,timestamp) VALUES (%s,%s,%s,%s)',(sid,sender,msg,now))
@@ -452,6 +468,7 @@ def on_message(data):
 
 @socketio.on('admin_join_session')
 def admin_join_session(data):
+    if not session.get('admin'): return
     join_room(data.get('session_id'))
 
 @socketio.on('join_design_notify')
