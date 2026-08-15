@@ -50,6 +50,22 @@ select.status-sel{padding:4px 8px;border:1px solid var(--border);border-radius:6
 .design-card img{width:100%;height:170px;object-fit:cover;display:block;}
 .img-download{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:14px;}
 .img-download:hover{background:rgba(0,0,0,.8);}
+.notif-wrap{position:relative;}
+.notif-bell{position:relative;width:34px;height:34px;border-radius:50%;background:none;border:1px solid var(--border);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;}
+.notif-bell:hover{background:var(--light);}
+.notif-count{position:absolute;top:-4px;right:-4px;background:#e24b4a;color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;}
+.notif-panel{position:absolute;top:42px;right:0;width:320px;max-width:90vw;max-height:420px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:200;}
+.notif-panel-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--dark);position:sticky;top:0;background:#fff;}
+.notif-panel-hdr button{background:none;border:none;color:var(--rose);font-size:11px;cursor:pointer;font-weight:500;}
+.notif-item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--light);}
+.notif-item.unread{background:#fbf3ee;}
+.notif-item-title{font-size:12px;font-weight:600;color:var(--dark);display:flex;align-items:center;gap:6px;}
+.notif-item-dot{width:6px;height:6px;border-radius:50%;background:var(--rose);flex-shrink:0;}
+.notif-item-msg{font-size:12px;color:var(--mid);margin-top:3px;line-height:1.5;}
+.notif-item-time{font-size:10px;color:#b09080;margin-top:5px;}
+.notif-empty{padding:24px 14px;text-align:center;font-size:12px;color:var(--mid);}
 .design-card-body{padding:13px;}
 .design-card-name{font-size:13px;font-weight:600;margin-bottom:2px;}
 .design-card-phone{font-size:11px;color:var(--mid);margin-bottom:8px;}
@@ -193,7 +209,21 @@ async function login(){
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
-    <div class="topbar"><div style="display:flex;align-items:center;"><button class="menu-toggle" onclick="toggleSidebar()">☰</button><h2 id="tabTitle">Reservations · 预约管理</h2></div><span style="font-size:11px;color:var(--mid);">LUNÉA Nail Studio, Penang</span></div>
+    <div class="topbar"><div style="display:flex;align-items:center;"><button class="menu-toggle" onclick="toggleSidebar()">☰</button><h2 id="tabTitle">Reservations · 预约管理</h2></div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div class="notif-wrap">
+          <button class="notif-bell" onclick="toggleNotifPanel()">🔔<span class="notif-count" id="notifCount" style="display:none;"></span></button>
+          <div class="notif-panel" id="notifPanel" style="display:none;">
+            <div class="notif-panel-hdr">
+              <span>Notifications</span>
+              <button onclick="markAllNotifsRead()">Mark all read</button>
+            </div>
+            <div id="notifList"></div>
+          </div>
+        </div>
+        <span style="font-size:11px;color:var(--mid);">LUNÉA Nail Studio, Penang</span>
+      </div>
+    </div>
     <div class="content">
 
       <div id="tab-appointments">
@@ -503,6 +533,43 @@ function initSocket(){
     else{const el=document.querySelector(`[data-sid="${d.session_id}"] .new-badge`);if(el)el.style.display="inline-block";}
   });
   socket.on("receive_message",d=>{if(d.session_id===activeSession&&d.sender==="admin")appendMsg("admin",d.message,d.timestamp);});
+  socket.on("new_notification",()=>loadNotifications());
+}
+/* ── Notifications ── */
+const NOTIF_LINK_TAB={appointments:"appointments",designs:"designs",chat:"chat"};
+let notifications=[];
+async function loadNotifications(){
+  notifications=await fetch("/api/admin/notifications").then(r=>r.json());
+  renderNotifPanel();
+}
+function renderNotifPanel(){
+  const unread=notifications.filter(n=>!n.is_read).length;
+  const countEl=document.getElementById("notifCount");
+  countEl.textContent=unread>9?"9+":unread;
+  countEl.style.display=unread?"flex":"none";
+  document.getElementById("notifList").innerHTML=notifications.map(n=>`<div class="notif-item${n.is_read?"":" unread"}" onclick="openNotif(${n.id},'${n.link||""}')">
+      <div class="notif-item-title">${n.is_read?"":'<span class="notif-item-dot"></span>'}${n.title}</div>
+      <div class="notif-item-msg">${n.message||""}</div>
+      <div class="notif-item-time">${n.created_at}</div>
+    </div>`).join("")||'<div class="notif-empty">No notifications yet.</div>';
+}
+function toggleNotifPanel(){
+  const panel=document.getElementById("notifPanel");
+  panel.style.display=panel.style.display==="none"?"block":"none";
+}
+document.addEventListener("click",e=>{
+  const wrap=document.querySelector(".notif-wrap");
+  if(wrap&&!wrap.contains(e.target))document.getElementById("notifPanel").style.display="none";
+});
+async function openNotif(id,link){
+  await fetch("/api/admin/notifications/"+id+"/read",{method:"POST"});
+  await loadNotifications();
+  document.getElementById("notifPanel").style.display="none";
+  if(NOTIF_LINK_TAB[link])showTab(NOTIF_LINK_TAB[link]);
+}
+async function markAllNotifsRead(){
+  await fetch("/api/admin/notifications/read-all",{method:"POST"});
+  loadNotifications();
 }
 async function loadSessions(){
   const data=await fetch("/api/admin/chat-sessions").then(r=>r.json());
@@ -664,7 +731,7 @@ async function regenerateSchedule(){
   alert(`Opened ${json.created} new slot(s) across the next ${weeks} week(s).`);
 }
 async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
-initSocket();loadAppointments();
+initSocket();loadAppointments();loadNotifications();
 </script>
 {% endif %}
 </body>

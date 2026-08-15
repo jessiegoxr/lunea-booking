@@ -175,6 +175,22 @@ table.rsv-table td { padding:11px 14px; font-size:13px; border-top:1px solid var
 .customer-name{font-size:12px;color:var(--mid);letter-spacing:1px;}
 .logout-btn{padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-size:11px;background:none;cursor:pointer;color:var(--mid);}
 .logout-btn:hover{background:var(--rose);color:#fff;border-color:var(--rose);}
+.notif-wrap{position:relative;}
+.notif-bell{position:relative;width:34px;height:34px;border-radius:50%;background:none;border:1px solid var(--border);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;}
+.notif-bell:hover{background:var(--light-rose);}
+.notif-count{position:absolute;top:-4px;right:-4px;background:#e24b4a;color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;}
+.notif-panel{position:absolute;top:42px;right:0;width:320px;max-width:90vw;max-height:420px;overflow-y:auto;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:200;}
+.notif-panel-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--dark);position:sticky;top:0;background:var(--white);}
+.notif-panel-hdr button{background:none;border:none;color:var(--rose);font-size:11px;cursor:pointer;font-weight:500;}
+.notif-item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--light-rose);}
+.notif-item.unread{background:#fbf3ee;}
+.notif-item-title{font-size:12px;font-weight:600;color:var(--dark);display:flex;align-items:center;gap:6px;}
+.notif-item-dot{width:6px;height:6px;border-radius:50%;background:var(--rose);flex-shrink:0;}
+.notif-item-msg{font-size:12px;color:var(--mid);margin-top:3px;line-height:1.5;}
+.notif-item-time{font-size:10px;color:#b09080;margin-top:5px;}
+.notif-empty{padding:24px 14px;text-align:center;font-size:12px;color:var(--mid);}
 @media(max-width:640px){
   .nav-inner{flex-wrap:wrap;height:auto;padding:10px 14px;row-gap:8px;}
   .nav-tabs{order:3;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px;padding-bottom:2px;}
@@ -254,6 +270,16 @@ async function submitAuth(){
       <button class="nav-tab" onclick="showSection('chat')">Chat <span class="chat-badge" id="chatBadge">1</span></button>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
+      <div class="notif-wrap">
+        <button class="notif-bell" onclick="toggleNotifPanel()">🔔<span class="notif-count" id="notifCount" style="display:none;"></span></button>
+        <div class="notif-panel" id="notifPanel" style="display:none;">
+          <div class="notif-panel-hdr">
+            <span>Notifications</span>
+            <button onclick="markAllNotifsRead()">Mark all read</button>
+          </div>
+          <div id="notifList"></div>
+        </div>
+      </div>
       <span class="customer-name">{{ customer.name }}</span>
       <button class="logout-btn" onclick="customerLogout()">Logout</button>
     </div>
@@ -403,7 +429,7 @@ async function submitAuth(){
   <div class="result-card" id="resultCard">
     <img id="resultImage" src="" alt="Uploaded design">
     <div style="font-size:14px;color:var(--dark);font-weight:600;margin-bottom:8px;">✓ Design submitted · 已提交</div>
-    <div style="font-size:13px;color:var(--mid);line-height:1.6;">Our nail technician will review your design and confirm the price via Live Chat.<br>我们的美甲师会人工审核您的设计图，并通过在线聊天确认价格。</div>
+    <div style="font-size:13px;color:var(--mid);line-height:1.6;">Our nail technician will review your design and confirm the price here or via Live Chat.<br>我们的美甲师会人工审核您的设计图，并在此处或通过在线聊天确认价格。</div>
     <button class="btn btn-primary" style="margin-top:16px;" onclick="showSection('chat')">Chat with us to confirm →</button>
   </div>
   <div class="alert error" id="uploadError"></div>
@@ -593,12 +619,56 @@ async function loadDashboard(){
   });
 }
 loadDashboard();
-let socket,sessionId,chatStarted=false;
+const NOTIF_LINK_TAB={book:'book',design:'design',chat:'chat'};
+let notifications=[];
+async function loadNotifications(){
+  notifications=await fetch('/api/customer/notifications').then(r=>r.json());
+  renderNotifPanel();
+}
+function renderNotifPanel(){
+  const unread=notifications.filter(n=>!n.is_read).length;
+  const countEl=document.getElementById('notifCount');
+  countEl.textContent=unread>9?'9+':unread;
+  countEl.style.display=unread?'flex':'none';
+  document.getElementById('notifList').innerHTML=notifications.map(n=>`<div class="notif-item${n.is_read?'':' unread'}" onclick="openNotif(${n.id},'${n.link||''}')">
+      <div class="notif-item-title">${n.is_read?'':'<span class="notif-item-dot"></span>'}${n.title}</div>
+      <div class="notif-item-msg">${n.message||''}</div>
+      <div class="notif-item-time">${n.created_at}</div>
+    </div>`).join('')||'<div class="notif-empty">No notifications yet.</div>';
+}
+function toggleNotifPanel(){
+  const panel=document.getElementById('notifPanel');
+  panel.style.display=panel.style.display==='none'?'block':'none';
+}
+document.addEventListener('click',e=>{
+  const wrap=document.querySelector('.notif-wrap');
+  if(wrap&&!wrap.contains(e.target))document.getElementById('notifPanel').style.display='none';
+});
+async function openNotif(id,link){
+  await fetch('/api/customer/notifications/'+id+'/read',{method:'POST'});
+  await loadNotifications();
+  document.getElementById('notifPanel').style.display='none';
+  if(NOTIF_LINK_TAB[link])showSection(NOTIF_LINK_TAB[link]);
+}
+async function markAllNotifsRead(){
+  await fetch('/api/customer/notifications/read-all',{method:'POST'});
+  loadNotifications();
+}
+loadNotifications();
+let socket,sessionId,chatStarted=false,historyLoaded=false;
 function initSocket(){
   socket=io();
   socket.on('receive_message',data=>{if(data.session_id===sessionId)appendMsg(data.sender,data.message,data.timestamp);});
+  socket.on('joined',data=>{
+    sessionId=data.session_id;
+    if(!historyLoaded){
+      historyLoaded=true;
+      loadHistory();
+      appendMsg('admin','👋 Hi! Welcome to LUNÉA Nail Studio. How can we help you?\n您好！欢迎来到 LUNÉA 美甲工作室，有什么可以帮您？',new Date().toLocaleTimeString());
+    }
+  });
   socket.on('connect',()=>{
-    if(chatStarted&&sessionId)socket.emit('join',{session_id:sessionId,name:CUSTOMER_NAME,phone:CUSTOMER_PHONE});
+    if(chatStarted)socket.emit('join',{name:CUSTOMER_NAME,phone:CUSTOMER_PHONE});
     const notifyPhone=document.getElementById('designPhone').value.trim();
     if(notifyPhone)socket.emit('join_design_notify',{phone:notifyPhone});
     socket.emit('join_customer_room');
@@ -623,6 +693,7 @@ function initSocket(){
     if(availCalY!==undefined)loadAvailCalData();
   });
   socket.on('announcements_changed',()=>loadDashboard());
+  socket.on('new_notification',()=>loadNotifications());
 }
 initSocket();
 const CUSTOMER_NAME={{ customer.name|tojson }};
@@ -630,13 +701,9 @@ const CUSTOMER_PHONE={{ customer.phone|tojson }};
 function startChat(){
   if(chatStarted)return;
   if(!socket)initSocket();
-  sessionId=localStorage.getItem('lunea_session')||('cust_'+Math.random().toString(36).substr(2,9));
-  localStorage.setItem('lunea_session',sessionId);
-  socket.emit('join',{session_id:sessionId,name:CUSTOMER_NAME,phone:CUSTOMER_PHONE});
   chatStarted=true;
   document.getElementById('chatWindow').style.display='flex';
-  loadHistory();
-  appendMsg('admin','👋 Hi! Welcome to LUNÉA Nail Studio. How can we help you?\n您好！欢迎来到 LUNÉA 美甲工作室，有什么可以帮您？',new Date().toLocaleTimeString());
+  socket.emit('join',{name:CUSTOMER_NAME,phone:CUSTOMER_PHONE});
 }
 async function loadHistory(){
   const res=await fetch('/api/chat/messages/'+sessionId);const msgs=await res.json();
@@ -664,7 +731,6 @@ async function sendChatImage(file){
     else alert(json.error||'Upload failed. Please try again.');
   }catch(e){alert('Upload failed. Please try again.');}
 }
-window.addEventListener('load',()=>{const saved=localStorage.getItem('lunea_session');if(saved){sessionId=saved;if(!socket)initSocket();}});
 </script>
 {% endif %}
 </body>
