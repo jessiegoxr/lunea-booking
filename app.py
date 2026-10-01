@@ -188,6 +188,10 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+@app.route('/health')
+def health():
+    return 'ok', 200
+
 @app.route('/')
 def customer_home():
     customer = None
