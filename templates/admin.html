@@ -40,6 +40,7 @@ body{font-family:"Segoe UI",sans-serif;background:#f0ebe4;color:var(--dark);}
 .appt-toolbar input{flex:1;padding:9px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:#fff;}
 .appt-toolbar input:focus{border-color:var(--rose);}
 .appt-toolbar select{padding:9px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff;cursor:pointer;}
+.appt-toolbar button{padding:9px 16px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:var(--rose);color:#fff;flex:0 0 auto;white-space:nowrap;}
 table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;}
 th{background:var(--light);padding:11px 14px;font-size:10px;letter-spacing:2px;color:var(--mid);text-align:left;}
 td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;}
@@ -206,6 +207,7 @@ async function login(){
     <div class="nav-item" onclick="showTab('members')">👥 Members</div>
     <div class="nav-item" onclick="showTab('announcements')">📢 Dashboard Content</div>
     <div class="nav-item" onclick="showTab('schedule')">🗓 Weekly Schedule</div>
+    <div class="nav-item" onclick="showTab('ledger')">💰 Ledger · 记账</div>
     <div class="sidebar-logout" onclick="logout()">⬅ Logout</div>
   </div>
   <div class="main">
@@ -332,12 +334,59 @@ async function login(){
         </div>
       </div>
 
+      <div id="tab-ledger" style="display:none">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-num" id="ledgerIncome" style="color:#2a7a2a">0</div><div class="stat-label">INCOME</div></div>
+          <div class="stat-card"><div class="stat-num" id="ledgerExpense" style="color:#a32d2d">0</div><div class="stat-label">EXPENSE</div></div>
+          <div class="stat-card"><div class="stat-num" id="ledgerNet">0</div><div class="stat-label">NET</div></div>
+        </div>
+        <div class="appt-toolbar">
+          <input type="date" id="ledgerStart" onchange="loadLedger()">
+          <input type="date" id="ledgerEnd" onchange="loadLedger()">
+          <button class="ann-save" onclick="setLedgerRange('today')" type="button">Today</button>
+          <button class="ann-save" onclick="setLedgerRange('month')" type="button">This Month</button>
+          <button class="ann-save" onclick="setLedgerRange('all')" type="button">All</button>
+        </div>
+        <div class="ann-form">
+          <div class="ann-form-row">
+            <select id="ledgerType" onchange="onLedgerTypeChange()">
+              <option value="income">💵 Income</option>
+              <option value="expense">💸 Expense</option>
+            </select>
+            <input type="date" id="ledgerDate">
+            <input type="number" id="ledgerAmount" placeholder="Amount (RM)" min="0" step="0.01">
+          </div>
+          <div class="ann-form-row">
+            <input type="text" id="ledgerCategory" list="ledgerCategoryList" placeholder="Category e.g. Service Payment, Supplies, Rent">
+            <datalist id="ledgerCategoryList"></datalist>
+            <select id="ledgerMethod">
+              <option value="">Payment Method...</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Card">Card</option>
+              <option value="E-Wallet">E-Wallet</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="ann-form-row">
+            <select id="ledgerAppt" onchange="onLedgerApptChange()">
+              <option value="">Link to a reservation (optional)...</option>
+            </select>
+            <input type="text" id="ledgerCustomer" placeholder="Customer / payee name">
+          </div>
+          <textarea id="ledgerNote" placeholder="Note..."></textarea>
+          <button class="ann-save" onclick="addLedgerEntry()">+ Add Entry</button>
+        </div>
+        <table><thead><tr><th>DATE</th><th>TYPE</th><th>CATEGORY</th><th>NAME</th><th>METHOD</th><th>AMOUNT</th><th>NOTE</th><th></th></tr></thead>
+        <tbody id="ledgerBody"></tbody></table>
+      </div>
+
     </div>
   </div>
 </div>
 <script>
 let socket,activeSession=null;
-const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天",members:"Member Management · 会员管理",announcements:"Dashboard Content · 公告管理",schedule:"Weekly Schedule · 每周时段"};
+const TABS={appointments:"Reservations · 预约管理",calendar:"Calendar · 日历",designs:"Design Uploads · 设计图评估",chat:"Live Chat · 在线聊天",members:"Member Management · 会员管理",announcements:"Dashboard Content · 公告管理",schedule:"Weekly Schedule · 每周时段",ledger:"Ledger · 记账"};
 function showTab(name){
   Object.keys(TABS).forEach(t=>{
     const el=document.getElementById("tab-"+t);
@@ -352,6 +401,7 @@ function showTab(name){
   if(name==="members")loadMembers();
   if(name==="announcements")loadAnnouncementsAdmin();
   if(name==="schedule")loadWeeklySchedule();
+  if(name==="ledger")loadLedger();
   document.getElementById("sidebar").classList.remove("open");
   document.getElementById("sidebarOverlay").classList.remove("show");
 }
@@ -729,6 +779,94 @@ async function regenerateSchedule(){
   const res=await fetch("/api/admin/weekly-schedule/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({weeks})});
   const json=await res.json();
   alert(`Opened ${json.created} new slot(s) across the next ${weeks} week(s).`);
+}
+/* ── Ledger ── */
+const LEDGER_CATEGORIES={income:["Service Payment","Product Sale","Other Income"],expense:["Supplies","Rent","Utilities","Salary","Marketing","Other Expense"]};
+let ledgerAppts=[],ledgerEntries=[],ledgerRangeSet=false;
+function fmtMoney(n){return "RM "+Number(n).toFixed(2);}
+function setLedgerRange(kind){
+  const today=new Date().toISOString().split("T")[0];
+  ledgerRangeSet=true;
+  if(kind==="today"){document.getElementById("ledgerStart").value=today;document.getElementById("ledgerEnd").value=today;}
+  else if(kind==="month"){const d=new Date();const first=new Date(d.getFullYear(),d.getMonth(),1).toISOString().split("T")[0];document.getElementById("ledgerStart").value=first;document.getElementById("ledgerEnd").value=today;}
+  else{document.getElementById("ledgerStart").value="";document.getElementById("ledgerEnd").value="";}
+  loadLedger();
+}
+async function loadLedger(){
+  if(!document.getElementById("ledgerDate").value)document.getElementById("ledgerDate").value=new Date().toISOString().split("T")[0];
+  if(!ledgerRangeSet){setLedgerRange("month");return;}
+  onLedgerTypeChange();
+  const start=document.getElementById("ledgerStart").value,end=document.getElementById("ledgerEnd").value;
+  const [data,appts]=await Promise.all([
+    fetch("/api/admin/ledger?start="+start+"&end="+end).then(r=>r.json()),
+    ledgerAppts.length?Promise.resolve(ledgerAppts):fetch("/api/admin/appointments").then(r=>r.json())
+  ]);
+  ledgerAppts=appts;ledgerEntries=data.entries;
+  document.getElementById("ledgerIncome").textContent=fmtMoney(data.income_total);
+  document.getElementById("ledgerExpense").textContent=fmtMoney(data.expense_total);
+  const net=document.getElementById("ledgerNet");
+  net.textContent=fmtMoney(data.net);net.style.color=data.net<0?"#a32d2d":"#2a7a2a";
+  renderLedgerApptOptions();
+  renderLedger();
+}
+function renderLedgerApptOptions(){
+  const sel=document.getElementById("ledgerAppt");const cur=sel.value;
+  const sorted=ledgerAppts.slice().filter(a=>a.status!=="cancelled").sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));
+  sel.innerHTML='<option value="">Link to a reservation (optional)...</option>'+
+    sorted.map(a=>`<option value="${a.id}">${a.name} — ${a.date} ${a.time}${a.service?" · "+a.service:""}</option>`).join("");
+  sel.value=cur;
+}
+function onLedgerTypeChange(){
+  const type=document.getElementById("ledgerType").value;
+  document.getElementById("ledgerCategoryList").innerHTML=LEDGER_CATEGORIES[type].map(c=>`<option value="${c}">`).join("");
+}
+function onLedgerApptChange(){
+  const id=document.getElementById("ledgerAppt").value;
+  if(!id)return;
+  const a=ledgerAppts.find(x=>String(x.id)===id);
+  if(!a)return;
+  document.getElementById("ledgerCustomer").value=a.name;
+  if(!document.getElementById("ledgerCategory").value)document.getElementById("ledgerCategory").value="Service Payment";
+  document.getElementById("ledgerType").value="income";onLedgerTypeChange();
+}
+function renderLedger(){
+  document.getElementById("ledgerBody").innerHTML=ledgerEntries.map(e=>`<tr>
+    <td>${e.entry_date}</td>
+    <td style="color:${e.entry_type==="income"?"#2a7a2a":"#a32d2d"};font-weight:600;">${e.entry_type==="income"?"Income":"Expense"}</td>
+    <td style="font-size:12px">${e.category||"–"}</td>
+    <td>${e.customer_name||"–"}${e.appt_date?`<br><small style="color:var(--mid)">↳ ${e.appt_date} ${e.appt_time}</small>`:""}</td>
+    <td style="font-size:12px">${e.payment_method||"–"}</td>
+    <td style="color:${e.entry_type==="income"?"#2a7a2a":"#a32d2d"};font-weight:600;">${e.entry_type==="income"?"+":"-"}${fmtMoney(e.amount)}</td>
+    <td style="font-size:12px;color:var(--mid)">${e.note||"–"}</td>
+    <td><button onclick="deleteLedgerEntry(${e.id})" style="border:none;background:none;color:#aaa;cursor:pointer;font-size:15px;">✕</button></td>
+    </tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:var(--mid);">No entries in this range.</td></tr>`;
+}
+async function addLedgerEntry(){
+  const body={
+    entry_type:document.getElementById("ledgerType").value,
+    entry_date:document.getElementById("ledgerDate").value,
+    amount:document.getElementById("ledgerAmount").value,
+    category:document.getElementById("ledgerCategory").value.trim(),
+    payment_method:document.getElementById("ledgerMethod").value,
+    appointment_id:document.getElementById("ledgerAppt").value||null,
+    customer_name:document.getElementById("ledgerCustomer").value.trim(),
+    note:document.getElementById("ledgerNote").value.trim()
+  };
+  const res=await fetch("/api/admin/ledger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const json=await res.json();
+  if(!json.success){alert(json.error||"Failed to add entry.");return;}
+  document.getElementById("ledgerAmount").value="";
+  document.getElementById("ledgerCategory").value="";
+  document.getElementById("ledgerMethod").value="";
+  document.getElementById("ledgerAppt").value="";
+  document.getElementById("ledgerCustomer").value="";
+  document.getElementById("ledgerNote").value="";
+  await loadLedger();
+}
+async function deleteLedgerEntry(id){
+  if(!confirm("Delete this entry?"))return;
+  await fetch("/api/admin/ledger/"+id,{method:"DELETE"});
+  loadLedger();
 }
 async function logout(){await fetch("/api/admin/logout",{method:"POST"});location.reload();}
 initSocket();loadAppointments();loadNotifications();
