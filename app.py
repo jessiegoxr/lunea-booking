@@ -140,6 +140,17 @@ def init_db():
         link TEXT DEFAULT '',
         is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW())''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS ledger_entries (
+        id SERIAL PRIMARY KEY,
+        entry_type TEXT NOT NULL,
+        amount NUMERIC(10,2) NOT NULL,
+        category TEXT DEFAULT '',
+        payment_method TEXT DEFAULT '',
+        appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+        customer_name TEXT DEFAULT '',
+        note TEXT DEFAULT '',
+        entry_date TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW())''')
     conn.commit(); cur.close(); conn.close()
 
 init_db()
@@ -744,6 +755,52 @@ def mark_all_admin_notifications_read():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
     conn = get_db(); cur = conn.cursor()
     cur.execute("UPDATE notifications SET is_read=TRUE WHERE recipient_type='admin'")
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/ledger')
+def get_ledger():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    start = request.args.get('start',''); end = request.args.get('end','')
+    conn = get_db(); cur = dict_cursor(conn)
+    cur.execute('''SELECT l.*, a.date as appt_date, a.time as appt_time, a.service as appt_service
+        FROM ledger_entries l LEFT JOIN appointments a ON a.id=l.appointment_id
+        WHERE (%s='' OR l.entry_date>=%s) AND (%s='' OR l.entry_date<=%s)
+        ORDER BY l.entry_date DESC, l.created_at DESC''',(start,start,end,end))
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r['amount'] = float(r['amount'])
+    income_total = sum(r['amount'] for r in rows if r['entry_type']=='income')
+    expense_total = sum(r['amount'] for r in rows if r['entry_type']=='expense')
+    cur.close(); conn.close()
+    return jsonify({'entries':rows,'income_total':income_total,'expense_total':expense_total,'net':income_total-expense_total})
+
+@app.route('/api/admin/ledger', methods=['POST'])
+def create_ledger_entry():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    d = request.json or {}
+    if d.get('entry_type') not in ('income','expense'):
+        return jsonify({'success':False,'error':'Entry type must be income or expense.'}), 400
+    try:
+        amount = float(d.get('amount'))
+        if amount <= 0: raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'success':False,'error':'Please enter a valid amount.'}), 400
+    if not d.get('entry_date'):
+        return jsonify({'success':False,'error':'Date is required.'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''INSERT INTO ledger_entries (entry_type,amount,category,payment_method,appointment_id,customer_name,note,entry_date)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
+        (d['entry_type'],amount,d.get('category',''),d.get('payment_method',''),
+         d.get('appointment_id') or None,d.get('customer_name',''),d.get('note',''),d['entry_date']))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/admin/ledger/<int:lid>', methods=['DELETE'])
+def delete_ledger_entry(lid):
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('DELETE FROM ledger_entries WHERE id=%s',(lid,))
     conn.commit(); cur.close(); conn.close()
     return jsonify({'success':True})
 
